@@ -1,0 +1,364 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-data-producer-nba
+  labels:
+    app: sports-platform
+    component: data-pipeline
+    league: nba
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: data-pipeline
+      league: nba
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: data-pipeline
+        league: nba
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: spark-data-producer
+          image: sports-platform/spark-data-producer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: METRICS_PORT
+              value: "9090"
+            - name: PRODUCER_BATCH_SIZE
+              value: "100"
+            - name: PRODUCER_LINGER_MS
+              value: "50"
+            - name: LEAGUE
+              value: "NBA"
+          ports:
+            - containerPort: 9090
+              name: metrics
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-data-producer-nfl
+  labels:
+    app: sports-platform
+    component: data-pipeline
+    league: nfl
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: data-pipeline
+      league: nfl
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: data-pipeline
+        league: nfl
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: spark-data-producer
+          image: sports-platform/spark-data-producer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: METRICS_PORT
+              value: "9090"
+            - name: PRODUCER_BATCH_SIZE
+              value: "100"
+            - name: PRODUCER_LINGER_MS
+              value: "50"
+            - name: LEAGUE
+              value: "NFL"
+          ports:
+            - containerPort: 9090
+              name: metrics
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-data-producer-nhl
+  labels:
+    app: sports-platform
+    component: data-pipeline
+    league: nhl
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: data-pipeline
+      league: nhl
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: data-pipeline
+        league: nhl
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: spark-data-producer
+          image: sports-platform/spark-data-producer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: METRICS_PORT
+              value: "9090"
+            - name: PRODUCER_BATCH_SIZE
+              value: "100"
+            - name: PRODUCER_LINGER_MS
+              value: "50"
+            - name: LEAGUE
+              value: "NHL"
+          ports:
+            - containerPort: 9090
+              name: metrics
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-data-producer-mlb
+  labels:
+    app: sports-platform
+    component: data-pipeline
+    league: mlb
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: data-pipeline
+      league: mlb
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: data-pipeline
+        league: mlb
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: spark-data-producer
+          image: sports-platform/spark-data-producer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: METRICS_PORT
+              value: "9090"
+            - name: PRODUCER_BATCH_SIZE
+              value: "100"
+            - name: PRODUCER_LINGER_MS
+              value: "50"
+            - name: LEAGUE
+              value: "MLB"
+          ports:
+            - containerPort: 9090
+              name: metrics
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-data-producer-f1
+  labels:
+    app: sports-platform
+    component: data-pipeline
+    league: f1
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: data-pipeline
+      league: f1
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: data-pipeline
+        league: f1
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: spark-data-producer
+          image: sports-platform/spark-data-producer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: METRICS_PORT
+              value: "9090"
+            - name: PRODUCER_BATCH_SIZE
+              value: "100"
+            - name: PRODUCER_LINGER_MS
+              value: "50"
+            - name: LEAGUE
+              value: "F1"
+          ports:
+            - containerPort: 9090
+              name: metrics
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ignite3-jdbc-config
+  labels:
+    app: ignite3
+data:
+  jdbc.properties: |
+    # Ignite 3.x JDBC Data Source Configuration
+    # This configures connection to TimescaleDB for cache persistence
+    
+    # PostgreSQL/JDBC Connection
+    ignite.jdbc.url=jdbc:postgresql://timescaledb.default.svc:5432/sports_analytics
+    ignite.jdbc.user=postgres
+    ignite.jdbc.password=password
+    ignite.jdbc.driver=org.postgresql.Driver
+    
+    # Connection Pool Settings
+    ignite.jdbc.pool.minSize=1
+    ignite.jdbc.pool.maxSize=20
+    ignite.jdbc.pool.maxLifetime=300000
+    ignite.jdbc.pool.idleTimeout=60000
+    
+    # Cache persistence settings
+    ignite.cache.nba_players.storage=jdbc
+    ignite.cache.nba_players.writeMode=async
+    ignite.cache.nba_players.flushFrequency=5000
+    
+    ignite.cache.nba_games.storage=jdbc
+    ignite.cache.nba_games.writeMode=async
+    ignite.cache.nba_games.flushFrequency=5000
+    
+    ignite.cache.nba_player_stats.storage=jdbc
+    ignite.cache.nba_player_stats.writeMode=async
+    ignite.cache.nba_player_stats.flushFrequency=5000
+    
+    ignite.cache.nba_schedule.storage=jdbc
+    ignite.cache.nba_schedule.writeMode=async
+    ignite.cache.nba_schedule.flushFrequency=5000

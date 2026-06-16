@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ignite3
+  labels:
+    app: ignite3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ignite3
+  template:
+    metadata:
+      labels:
+        app: ignite3
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: ignite3
+          image: apacheignite/ignite:3.0.0-beta1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 10800
+              name: thin-client
+            - containerPort: 33400
+              name: rest
+            - containerPort: 51800
+              name: discovery
+          env:
+            - name: IGNITE_CLI_HOME
+              value: "/opt/ignite3"
+            - name: JAVA_OPTS
+              value: "-Djava.net.preferIPv4Stack=true"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1Gi"
+              ephemeral-storage: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+              ephemeral-storage: "2Gi"
+          volumeMounts:
+            - name: ignite-config
+              mountPath: "/opt/ignite3/config"
+            - name: ignite-data
+              mountPath: "/opt/ignite3/data"
+            - name: ignite-wal
+              mountPath: "/opt/ignite3/wal"
+            - name: jdbc-config
+              mountPath: "/opt/ignite3/config/jdbc"
+              readOnly: true
+          livenessProbe:
+            exec:
+              command: ["ignite", "node", "status"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["ignite", "node", "status"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: ignite-config
+          configMap:
+            name: ignite3-config
+        - name: ignite-data
+          persistentVolumeClaim:
+            claimName: ignite3-pvc
+        - name: ignite-wal
+          persistentVolumeClaim:
+            claimName: ignite3-wal-pvc
+        - name: jdbc-config
+          configMap:
+            name: ignite3-jdbc-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ignite3-service
+  labels:
+    app: ignite3
+spec:
+  type: ClusterIP
+  selector:
+    app: ignite3
+  ports:
+    - name: thin-client
+      port: 10800
+      targetPort: 10800
+    - name: rest
+      port: 33400
+      targetPort: 33400
+    - name: discovery
+      port: 51800
+      targetPort: 51800

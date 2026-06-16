@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: odds-poller
+  labels:
+    app: sports-platform
+    component: data-ingestion
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: data-ingestion
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: data-ingestion
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: odds-poller
+          image: sports-platform/poller:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.unified_poller"]
+          args: ["--league", "ODDS"]
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: KAFKA_TOPIC_ODDS
+              value: "sports-analytics-live-odds"
+            - name: ODDS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: odds-api-credentials
+                  key: api_key
+                  optional: true
+            - name: ODDS_API_URL
+              value: "https://api.odds-provider.com/v1"
+            - name: POLL_INTERVAL_SECONDS
+              value: "60"
+            - name: BATCH_SIZE
+              value: "100"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+              ephemeral-storage: "500Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+              ephemeral-storage: "1Gi"
+          ports:
+            - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

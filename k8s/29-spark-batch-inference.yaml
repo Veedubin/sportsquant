@@ -1,0 +1,101 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: spark-batch-inference
+  namespace: default
+  labels:
+    app: sports-platform
+    component: ml-inference
+    spark-operator: spark
+spec:
+  type: Python
+  mode: cluster
+  sparkVersion: 3.5.0
+  image: 709825985650.dkr.ecr.us-east-1.amazonaws.com/spark-rapids/spark:3.5.0-cuda12-x86_64
+  imagePullPolicy: Always
+  mainApplicationFile: local:///opt/spark/work-dir/spark_batch_inference.py
+  # Hadoop configuration for Kafka access
+  hadoopConf:
+    spark.driver.extraClassPath: "/opt/hadoop/jars/*"
+    spark.executor.extraClassPath: "/opt/hadoop/jars/*"
+    spark.kubernetes.kerberos.krb5.path: "/etc/krb5.conf"
+  sparkConf:
+    # Spark RAPIDS Plugin Configuration
+    spark.plugins: "com.nvidia.spark.SQLPlugin"
+    spark.rapids.sql.enabled: "true"
+    spark.rapids.sql.concurrentGpuTasks: "2"
+    spark.rapids.memory.gpu.minAllocFraction: "0.1"
+    spark.rapids.memory.gpu.maxAllocFraction: "0.9"
+    spark.rapids.memory.gpu.reservePercent: "10"
+    # GPU Configuration
+    spark.task.resource.gpu.amount: "1"
+    # Kafka Configuration
+    spark.kafka.bootstrap.servers: "sports-cluster-kafka-bootstrap:9092"
+    # MLflow Configuration
+    spark.mlflow.track.mlflow.enabled: "true"
+    spark.mlflow.trackingUri: "http://mlflow-server:5000"
+    # Spark SQL Configuration for Performance
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+    spark.sql.adaptive.skewJoin.enabled: "true"
+    spark.sql.shuffle.partitions: "200"
+    # Logging
+    spark.log.level: "INFO"
+  driver:
+    cores: 2
+    memory: "4g"
+    gpu:
+      name: nvidia.com/gpu
+      quantity: 1
+    serviceAccount: spark
+    labels:
+      app: sports-platform
+      component: ml-inference
+    volumes:
+      - name: spark-script
+        configMap:
+          name: spark-model-training
+          items:
+            - key: model_training.py
+              path: spark_batch_inference.py
+      - name: hadoop-conf
+        configMap:
+          name: hadoop-conf
+    volumeMounts:
+      - name: spark-script
+        mountPath: /opt/spark/work-dir
+      - name: hadoop-conf
+        mountPath: /opt/hadoop/conf
+        readOnly: true
+  executor:
+    cores: 4
+    instances: 2
+    memory: "8g"
+    gpu:
+      name: nvidia.com/gpu
+      quantity: 1
+    labels:
+      app: sports-platform
+      component: ml-inference
+    volumes:
+      - name: spark-script
+        configMap:
+          name: spark-model-training
+          items:
+            - key: model_training.py
+              path: spark_batch_inference.py
+      - name: hadoop-conf
+        configMap:
+          name: hadoop-conf
+    volumeMounts:
+      - name: spark-script
+        mountPath: /opt/spark/work-dir
+      - name: hadoop-conf
+        mountPath: /opt/hadoop/conf
+        readOnly: true
+  monitoring:
+    exposeDriverMetrics: true
+    exposeExecutorMetrics: true
+    prometheus:
+      port: 8090
+      jmxExporterJar: "/prometheus/exporter.jar"

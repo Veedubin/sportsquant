@@ -1,0 +1,154 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nba-odds-backfill-2026-01-25
+  labels:
+    app: nba-odds-backfill
+    component: ingest
+    environment: production
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: nba-odds-backfill
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: odds-backfill
+          image: nba-ingest:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-c"]
+          args:
+            - |
+              import asyncio
+              import json
+              import logging
+              import os
+              from datetime import datetime, timedelta
+              from confluent_kafka import Producer
+              import httpx
+
+              logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+              logger = logging.getLogger(__name__)
+
+              # Configuration
+              KAFKA_BOOTSTRAP = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'sports-cluster-kafka-bootstrap.default.svc:9092')
+              API_KEY = os.environ.get('THE_ODDS_API_KEY', '')
+              MARKETS = os.environ.get('MARKETS', 'us,us2,us_dfs').split(',')
+              START_DATE = os.environ.get('START_DATE', '2026-01-25')
+              END_DATE = os.environ.get('END_DATE', '2026-01-27')
+              ODDS_TOPIC = os.environ.get('LIVE_ODDS_TOPIC', 'sports-analytics-live-odds')
+
+              logger.info(f"Backfilling odds for {START_DATE} to {END_DATE}")
+              logger.info(f"Markets: {MARKETS}")
+
+              async def fetch_odds_for_date(client, date_str, markets):
+                  """Fetch odds for a specific date."""
+                  url = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
+                  headers = {"Accept": "application/json"}
+                  api_key = API_KEY  # Use as query param, not header
+
+                  all_odds = []
+                  for region in markets:
+                      params = {
+                          "apiKey": api_key,
+                          "regions": region,
+                          "oddsFormat": "decimal",
+                          "commenceDateFrom": f"{date_str}T00:00:00Z",
+                          "commenceDateTo": f"{date_str}T23:59:59Z",
+                      }
+                      try:
+                          response = await client.get(url, headers=headers, params=params, timeout=30.0)
+                          response.raise_for_status()
+                          odds = response.json()
+                          if odds:
+                              logger.info(f"  Got {len(odds)} odds events for {date_str} ({region})")
+                              all_odds.extend(odds)
+                      except httpx.HTTPStatusError as e:
+                          logger.error(f"API error for {date_str} ({region}): {e.response.status_code}")
+                  return all_odds
+
+              def create_kafka_producer():
+                  conf = {
+                      "bootstrap.servers": KAFKA_BOOTSTRAP,
+                      "client.id": "nba-odds-backfill",
+                      "acks": "all",
+                  }
+                  return Producer(conf)
+
+              def transform_odds(odds_data, date_str):
+                  return {
+                      "game_id": odds_data.get("id", ""),
+                      "sport_key": odds_data.get("sport_key", "basketball_nba"),
+                      "event_id": odds_data.get("id", ""),
+                      "commence_time": odds_data.get("commence_time", ""),
+                      "home_team": odds_data.get("home_team", ""),
+                      "away_team": odds_data.get("away_team", ""),
+                      "markets": odds_data.get("bookmakers", []),
+                      "timestamp": datetime.utcnow().isoformat(),
+                      "backfill_date": date_str,
+                  }
+
+              async def main():
+                  producer = create_kafka_producer()
+
+                  start = datetime.strptime(START_DATE, "%Y-%m-%d")
+                  end = datetime.strptime(END_DATE, "%Y-%m-%d")
+                  delta = timedelta(days=1)
+
+                  total_events = 0
+                  async with httpx.AsyncClient(timeout=60.0) as client:
+                      current = start
+                      while current <= end:
+                          date_str = current.strftime("%Y-%m-%d")
+                          logger.info(f"Fetching odds for {date_str}...")
+                          odds_events = await fetch_odds_for_date(client, date_str, MARKETS)
+
+                          for odds_event in odds_events:
+                              transformed = transform_odds(odds_event, date_str)
+                              game_id = odds_event.get("id", "")
+                              try:
+                                  producer.produce(
+                                      ODDS_TOPIC,
+                                      key=game_id.encode("utf-8"),
+                                      value=json.dumps(transformed).encode("utf-8"),
+                                  )
+                                  total_events += 1
+                              except Exception as e:
+                                  logger.error(f"Failed to produce odds: {e}")
+
+                          producer.flush()
+                          current += delta
+
+                  logger.info(f"Backfill complete. Produced {total_events} odds events to {ODDS_TOPIC}")
+
+              if __name__ == "__main__":
+                  asyncio.run(main())
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: bootstrap_servers
+            - name: THE_ODDS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: odds-api-credentials
+                  key: api-key
+            - name: START_DATE
+              value: "2026-01-25"
+            - name: END_DATE
+              value: "2026-01-27"
+            - name: MARKETS
+              value: "us,us2,us_dfs"
+            - name: LIVE_ODDS_TOPIC
+              value: "sports-analytics-live-odds"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"

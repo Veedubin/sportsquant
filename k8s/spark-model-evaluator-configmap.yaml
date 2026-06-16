@@ -1,0 +1,674 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-model-evaluator
+  namespace: default
+  labels:
+    app: spark
+    component: model-evaluator
+data:
+  model_evaluator.py: |
+    """
+    Sports Analytics Model Evaluator Script
+
+    This Spark job reads model predictions from Kafka, fetches actual results
+    from TimescaleDB, calculates evaluation KPIs (Log Loss, Brier Score, MAE,
+    Calibration), and outputs results to Kafka for monitoring.
+    Runs as a nightly batch job via SparkApplication schedule field.
+    """
+    import logging
+    import sys
+    import json
+    from datetime import datetime, timedelta
+    from decimal import Decimal
+    from typing import Dict, List, Tuple, Optional
+
+    from pyspark.sql import SparkSession
+    from pyspark.sql.functions import (
+        col, from_json, when, avg, sum as spark_sum, count,
+        max as spark_max, min as spark_min, stddev, abs as spark_abs,
+        lit, current_timestamp, date_sub, expr, udf, datediff,
+        to_timestamp, coalesce
+    )
+    from pyspark.sql.types import (
+        StructType, StructField, StringType, DoubleType,
+        IntegerType, TimestampType, BooleanType, DecimalType
+    )
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logger = logging.getLogger(__name__)
+
+    # Kafka configuration
+    KAFKA_BOOTSTRAP_SERVERS = "sports-cluster-kafka-bootstrap:9092"
+    KAFKA_PREDICTIONS_TOPIC = "sports.analytics.model-predictions"
+    KAFKA_OUTPUT_TOPIC = "sports.analytics.model-evaluation"
+
+    # TimescaleDB configuration
+    TIMESCALEDB_URL = "jdbc:postgresql://timescaledb:5432/sports_analytics"
+    TIMESCALEDB_USER = "postgres"
+    TIMESCALEDB_PASSWORD = "postgres"
+
+    # Model evaluation thresholds
+    BRIER_SCORE_THRESHOLD = 0.25
+    MAE_THRESHOLD = 2.0
+    CALIBRATION_TARGET = 1.0
+
+    # Schema definitions
+    PREDICTION_SCHEMA = StructType([
+        StructField("game_id", StringType(), True),
+        StructField("team_home", StringType(), True),
+        StructField("team_away", StringType(), True),
+        StructField("win_probability_home", DoubleType(), True),
+        StructField("win_probability_away", DoubleType(), True),
+        StructField("model_name", StringType(), True),
+        StructField("model_version", StringType(), True),
+        StructField("created_at", TimestampType(), True)
+    ])
+
+
+    def create_spark_session():
+        """Create and configure Spark session with RAPIDS GPU acceleration."""
+        logger.info("Initializing Spark session for model evaluation")
+
+        spark = SparkSession.builder \
+            .appName("SportsModelEvaluator") \
+            .config("spark.driver.memory", "4g") \
+            .config("spark.driver.maxResultSize", "2g") \
+            .config("spark.executor.memory", "8g") \
+            .config("spark.executor.cores", "4") \
+            .config("spark.sql.shuffle.partitions", "100") \
+            .config("spark.sql.adaptive.enabled", "true") \
+            .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
+            .config("spark.rapids.sql.enabled", "true") \
+            .config("spark.rapids.sql.concurrentGpuTasks", "2") \
+            .getOrCreate()
+
+        logger.info("Spark session initialized successfully")
+        logger.info(f"Spark version: {spark.version}")
+
+        return spark
+
+
+    def read_predictions_from_kafka(spark):
+        """Read model predictions from Kafka topic."""
+        logger.info(f"Reading predictions from Kafka topic: {KAFKA_PREDICTIONS_TOPIC}")
+
+        try:
+            df = spark.read \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS) \
+                .option("subscribe", KAFKA_PREDICTIONS_TOPIC) \
+                .option("startingOffsets", "earliest") \
+                .option("endingOffsets", "latest") \
+                .load()
+
+            # Parse JSON predictions
+            predictions_df = df.select(
+                from_json(col("value").cast("string"), PREDICTION_SCHEMA).alias("data")
+            ).select("data.*")
+
+            logger.info(f"Loaded {predictions_df.count()} prediction records")
+
+            return predictions_df
+
+        except Exception as e:
+            logger.error(f"Error reading predictions from Kafka: {e}")
+            raise
+
+
+    def read_actual_results_from_timescaledb(spark, lookback_days=30):
+        """Read actual game results from TimescaleDB."""
+        logger.info(f"Reading actual results from TimescaleDB (last {lookback_days} days)")
+
+        try:
+            # Query to get game results with winners
+            query = f"""
+                SELECT
+                    game_id,
+                    team_home,
+                    team_away,
+                    home_score,
+                    away_score,
+                    CASE
+                        WHEN home_score > away_score THEN 1
+                        WHEN home_score < away_score THEN 0
+                        ELSE 0.5
+                    END AS home_win,
+                    captured_at as game_time
+                FROM nba_odds_snapshots
+                WHERE captured_at >= NOW() - INTERVAL '{lookback_days} days'
+                GROUP BY game_id, team_home, team_away, home_score, away_score, captured_at
+                ORDER BY captured_at DESC
+            """
+
+            # Read from JDBC
+            actuals_df = spark.read \
+                .format("jdbc") \
+                .option("url", TIMESCALEDB_URL) \
+                .option("user", TIMESCALEDB_USER) \
+                .option("password", TIMESCALEDB_PASSWORD) \
+                .option("query", query) \
+                .load()
+
+            logger.info(f"Loaded {actuals_df.count()} actual game results")
+
+            return actuals_df
+
+        except Exception as e:
+            logger.error(f"Error reading from TimescaleDB: {e}")
+            # Return empty DataFrame with expected schema
+            return spark.createDataFrame([], StructType([
+                StructField("game_id", StringType(), True),
+                StructField("team_home", StringType(), True),
+                StructField("team_away", StringType(), True),
+                StructField("home_score", IntegerType(), True),
+                StructField("away_score", IntegerType(), True),
+                StructField("home_win", DoubleType(), True),
+                StructField("game_time", TimestampType(), True)
+            ]))
+
+
+    def join_predictions_with_actuals(predictions_df, actuals_df):
+        """Join predictions with actual game results."""
+        logger.info("Joining predictions with actual results")
+
+        # Join on game_id
+        joined_df = predictions_df.join(
+            actuals_df,
+            predictions_df.game_id == actuals_df.game_id,
+            "inner"
+        ).select(
+            predictions_df.game_id,
+            predictions_df.team_home,
+            predictions_df.team_away,
+            predictions_df.win_probability_home,
+            predictions_df.win_probability_away,
+            predictions_df.model_name,
+            predictions_df.model_version,
+            predictions_df.created_at,
+            actuals_df.home_score,
+            actuals_df.away_score,
+            actuals_df.home_win
+        )
+
+        logger.info(f"Matched {joined_df.count()} predictions with actual results")
+
+        return joined_df
+
+
+    def calculate_log_loss(evaluation_df):
+        """
+        Calculate Log Loss for binary classification.
+        Log Loss = -1/N * sum(y * log(p) + (1-y) * log(1-p))
+        """
+        logger.info("Calculating Log Loss")
+
+        # Filter to valid predictions (probabilities between 0 and 1)
+        valid_df = evaluation_df.filter(
+            (col("win_probability_home") > 0) &
+            (col("win_probability_home") < 1) &
+            (col("home_win").isNotNull())
+        )
+
+        # Calculate Log Loss
+        log_loss_df = valid_df.withColumn(
+            "log_loss_home",
+            -col("home_win") * spark_abs(col("win_probability_home").log())
+        ).withColumn(
+            "log_loss_away",
+            -(1 - col("home_win")) * spark_abs((1 - col("win_probability_home")).log())
+        ).withColumn(
+            "log_loss",
+            col("log_loss_home") + col("log_loss_away")
+        )
+
+        result = log_loss_df.agg(
+            avg("log_loss").alias("log_loss"),
+            count("game_id").alias("sample_count")
+        ).collect()[0]
+
+        log_loss_value = result["log_loss"] if result["log_loss"] else 0.0
+        sample_count = result["sample_count"]
+
+        logger.info(f"Log Loss: {log_loss_value:.4f} (based on {sample_count} samples)")
+
+        return log_loss_value, sample_count
+
+
+    def calculate_brier_score(evaluation_df):
+        """
+        Calculate Brier Score for probability calibration.
+        Brier Score = 1/N * sum((p - o)^2)
+        where p is predicted probability and o is actual outcome (0 or 1)
+        """
+        logger.info("Calculating Brier Score")
+
+        valid_df = evaluation_df.filter(
+            col("home_win").isNotNull() &
+            col("win_probability_home").isNotNull()
+        )
+
+        brier_df = valid_df.withColumn(
+            "brier_score",
+            (col("win_probability_home") - col("home_win")) ** 2
+        )
+
+        result = brier_df.agg(
+            avg("brier_score").alias("brier_score"),
+            count("game_id").alias("sample_count")
+        ).collect()[0]
+
+        brier_score = result["brier_score"] if result["brier_score"] else 0.0
+        sample_count = result["sample_count"]
+
+        logger.info(f"Brier Score: {brier_score:.4f} (threshold: < {BRIER_SCORE_THRESHOLD})")
+        if brier_score <= BRIER_SCORE_THRESHOLD:
+            logger.info("  -> PASS: Brier Score within acceptable range")
+        else:
+            logger.info("  -> WARNING: Brier Score exceeds threshold")
+
+        return brier_score, sample_count
+
+
+    def calculate_mae_point_spread(evaluation_df):
+        """
+        Calculate Mean Absolute Error for point spread predictions.
+        Point Spread = home_score - away_score
+        """
+        logger.info("Calculating MAE for point spreads")
+
+        valid_df = evaluation_df.filter(
+            col("home_score").isNotNull() &
+            col("away_score").isNotNull() &
+            col("win_probability_home").isNotNull()
+        )
+
+        # Calculate implied point spread from probabilities
+        # Higher probability of home win implies home team is favored
+        implied_spread_df = valid_df.withColumn(
+            "implied_spread",
+            (0.5 - col("win_probability_home")) * 20  # Scale factor for spread
+        ).withColumn(
+            "actual_spread",
+            col("home_score") - col("away_score")
+        ).withColumn(
+            "spread_error",
+            spark_abs(col("implied_spread") - col("actual_spread"))
+        )
+
+        result = implied_spread_df.agg(
+            avg("spread_error").alias("mae"),
+            count("game_id").alias("sample_count")
+        ).collect()[0]
+
+        mae = result["mae"] if result["mae"] else 0.0
+        sample_count = result["sample_count"]
+
+        logger.info(f"MAE (Point Spread): {mae:.2f} points (threshold: < {MAE_THRESHOLD})")
+        if mae <= MAE_THRESHOLD:
+            logger.info("  -> PASS: MAE within acceptable range")
+        else:
+            logger.info("  -> WARNING: MAE exceeds threshold")
+
+        return mae, sample_count
+
+
+    def calculate_calibration(evaluation_df, buckets=10):
+        """
+        Calculate calibration score.
+        Calibration = average(predicted_probability) / average(actual_outcome)
+        Should be close to 1.0 for well-calibrated models.
+        """
+        logger.info(f"Calculating Calibration (using {buckets} probability buckets)")
+
+        valid_df = evaluation_df.filter(
+            col("home_win").isNotNull() &
+            col("win_probability_home").isNotNull()
+        )
+
+        # Create probability buckets
+        bucket_size = 1.0 / buckets
+        calibrated_df = valid_df.withColumn(
+            "prob_bucket",
+            (col("win_probability_home") / bucket_size).cast("int").clip(0, buckets - 1)
+        )
+
+        # Calculate calibration per bucket
+        calibration_df = calibrated_df.groupBy("prob_bucket").agg(
+            avg("win_probability_home").alias("mean_predicted"),
+            avg("home_win").alias("mean_actual"),
+            count("game_id").alias("bucket_count")
+        )
+
+        # Show calibration breakdown
+        calibration_rows = calibration_df.collect()
+        logger.info("Calibration breakdown by probability bucket:")
+        for row in calibration_rows:
+            bucket = row["prob_bucket"]
+            predicted = row["mean_predicted"]
+            actual = row["mean_actual"]
+            count = row["bucket_count"]
+            bucket_range = f"[{bucket * bucket_size:.1f}, {(bucket + 1) * bucket_size:.1f})"
+            logger.info(f"  {bucket_range}: predicted={predicted:.3f}, actual={actual:.3f}, n={count}")
+
+        # Calculate overall calibration ratio
+        overall = calibrated_df.agg(
+            avg("win_probability_home").alias("mean_predicted"),
+            avg("home_win").alias("mean_actual")
+        ).collect()[0]
+
+        mean_predicted = overall["mean_predicted"] if overall["mean_predicted"] else 0.5
+        mean_actual = overall["mean_actual"] if overall["mean_actual"] else 0.5
+
+        calibration_ratio = mean_predicted / mean_actual if mean_actual > 0 else 1.0
+
+        logger.info(f"Overall Calibration: {calibration_ratio:.4f} (target: {CALIBRATION_TARGET})")
+        deviation = abs(calibration_ratio - CALIBRATION_TARGET)
+        if deviation <= 0.1:
+            logger.info("  -> PASS: Model is well calibrated")
+        else:
+            logger.info("  -> WARNING: Model calibration deviates from target")
+
+        return calibration_ratio, calibration_df
+
+
+    def calculate_additional_metrics(evaluation_df):
+        """Calculate additional model evaluation metrics."""
+        logger.info("Calculating additional metrics")
+
+        valid_df = evaluation_df.filter(
+            col("home_win").isNotNull() &
+            col("win_probability_home").isNotNull()
+        )
+
+        # Binary predictions (threshold at 0.5)
+        predictions_binary = valid_df.withColumn(
+            "predicted_home_win",
+            when(col("win_probability_home") >= 0.5, 1).otherwise(0)
+        )
+
+        # Accuracy
+        accuracy_df = predictions_binary.withColumn(
+            "correct",
+            when(col("predicted_home_win") == col("home_win"), 1).otherwise(0)
+        )
+
+        accuracy_result = accuracy_df.agg(
+            avg("correct").alias("accuracy")
+        ).collect()[0]
+        accuracy = accuracy_result["accuracy"] if accuracy_result["accuracy"] else 0.0
+
+        logger.info(f"Accuracy: {accuracy:.4f}")
+
+        # Confusion matrix components
+        tp = predictions_binary.filter(
+            (col("predicted_home_win") == 1) & (col("home_win") == 1)
+        ).count()
+        tn = predictions_binary.filter(
+            (col("predicted_home_win") == 0) & (col("home_win") == 0)
+        ).count()
+        fp = predictions_binary.filter(
+            (col("predicted_home_win") == 1) & (col("home_win") == 0)
+        ).count()
+        fn = predictions_binary.filter(
+            (col("predicted_home_win") == 0) & (col("home_win") == 1)
+        ).count()
+
+        logger.info(f"Confusion Matrix - TP: {tp}, TN: {tn}, FP: {fp}, FN: {fn}")
+
+        # Precision and Recall
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        logger.info(f"Precision: {precision:.4f}")
+        logger.info(f"Recall: {recall:.4f}")
+        logger.info(f"F1 Score: {f1:.4f}")
+
+        return {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1,
+            "true_positives": tp,
+            "true_negatives": tn,
+            "false_positives": fp,
+            "false_negatives": fn
+        }
+
+
+    def compile_evaluation_results(
+        log_loss, ll_count,
+        brier_score, bs_count,
+        mae, mae_count,
+        calibration, cal_df,
+        additional_metrics
+    ):
+        """Compile all evaluation results into a summary."""
+        logger.info("Compiling evaluation results")
+
+        # Determine pass/fail status for each KPI
+        passed_brier = brier_score <= BRIER_SCORE_THRESHOLD
+        passed_mae = mae <= MAE_THRESHOLD
+        passed_calibration = abs(calibration - CALIBRATION_TARGET) <= 0.1
+
+        # Calculate overall score (weighted average of normalized KPIs)
+        # Lower is better for Log Loss and Brier, so we invert
+        overall_status = "PASS" if (passed_brier and passed_mae and passed_calibration) else "WARNING"
+
+        results = {
+            "evaluation_timestamp": datetime.now().isoformat(),
+            "model_metrics": {
+                "log_loss": round(log_loss, 4),
+                "log_loss_samples": ll_count,
+                "brier_score": round(brier_score, 4),
+                "brier_score_threshold": BRIER_SCORE_THRESHOLD,
+                "brier_passed": passed_brier,
+                "mae_point_spread": round(mae, 2),
+                "mae_threshold": MAE_THRESHOLD,
+                "mae_passed": passed_mae,
+                "calibration_ratio": round(calibration, 4),
+                "calibration_target": CALIBRATION_TARGET,
+                "calibration_passed": passed_calibration
+            },
+            "classification_metrics": {
+                "accuracy": round(additional_metrics["accuracy"], 4),
+                "precision": round(additional_metrics["precision"], 4),
+                "recall": round(additional_metrics["recall"], 4),
+                "f1_score": round(additional_metrics["f1_score"], 4)
+            },
+            "confusion_matrix": {
+                "true_positives": additional_metrics["true_positives"],
+                "true_negatives": additional_metrics["true_negatives"],
+                "false_positives": additional_metrics["false_positives"],
+                "false_negatives": additional_metrics["false_negatives"]
+            },
+            "overall_status": overall_status,
+            "recommendations": []
+        }
+
+        # Add recommendations based on results
+        if not passed_brier:
+            results["recommendations"].append(
+                "Consider recalibrating probabilities or adjusting model thresholds"
+            )
+        if not passed_mae:
+            results["recommendations"].append(
+                "Point spread predictions need improvement - review feature engineering"
+            )
+        if not passed_calibration:
+            results["recommendations"].append(
+                "Probability calibration is off - consider Platt scaling or isotonic regression"
+            )
+        if passed_brier and passed_mae and passed_calibration:
+            results["recommendations"].append(
+                "Model performance is within acceptable ranges - continue monitoring"
+            )
+
+        return results
+
+
+    def write_results_to_kafka(spark, results: Dict):
+        """Write evaluation results to Kafka for monitoring."""
+        logger.info("Writing evaluation results to Kafka")
+
+        # Create DataFrame from results
+        results_json = json.dumps(results)
+
+        result_df = spark.createDataFrame([(results_json,)]).toDF("value")
+
+        # Write to Kafka
+        def write_batch(df, batch_id):
+            df.select(
+                lit("model-evaluation-results").cast("string").alias("key"),
+                col("value")
+            ).write \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS) \
+                .option("topic", KAFKA_OUTPUT_TOPIC) \
+                .save()
+
+        query = result_df.writeStream \
+            .foreachBatch(write_batch) \
+            .outputMode("append") \
+            .option("checkpointLocation", "/tmp/spark/checkpoints/model-evaluator") \
+            .start()
+
+        return query
+
+
+    def save_results_locally(spark, results: Dict):
+        """Save evaluation results to local storage."""
+        logger.info("Saving evaluation results locally")
+
+        output_path = "/opt/spark/output"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        try:
+            # Save as JSON
+            results_rdd = spark.sparkContext.parallelize([json.dumps(results, indent=2)])
+            results_rdd.saveAsTextFile(f"{output_path}/evaluation/{timestamp}/results.json")
+
+            # Save as Parquet for analytics
+            results_df = spark.createDataFrame([results])
+            results_df.write \
+                .mode("overwrite") \
+                .parquet(f"{output_path}/evaluation/{timestamp}/results.parquet")
+
+            logger.info(f"Results saved to: {output_path}/evaluation/{timestamp}/")
+
+        except Exception as e:
+            logger.error(f"Error saving results locally: {e}")
+
+
+    def log_evaluation_summary(results: Dict):
+        """Log a formatted summary of evaluation results."""
+        logger.info("=" * 60)
+        logger.info("MODEL EVALUATION SUMMARY")
+        logger.info("=" * 60)
+        logger.info(f"Evaluation Time: {results['evaluation_timestamp']}")
+        logger.info("")
+        logger.info("KPI Results:")
+        logger.info(f"  Log Loss: {results['model_metrics']['log_loss']:.4f}")
+        logger.info(f"  Brier Score: {results['model_metrics']['brier_score']:.4f} "
+                   f"(threshold: < {results['model_metrics']['brier_score_threshold']}) "
+                   f"[{'PASS' if results['model_metrics']['brier_passed'] else 'FAIL'}]")
+        logger.info(f"  MAE (Point Spread): {results['model_metrics']['mae_point_spread']:.2f} "
+                   f"(threshold: < {results['model_metrics']['mae_threshold']}) "
+                   f"[{'PASS' if results['model_metrics']['mae_passed'] else 'FAIL'}]")
+        logger.info(f"  Calibration: {results['model_metrics']['calibration_ratio']:.4f} "
+                   f"(target: {results['model_metrics']['calibration_target']}) "
+                   f"[{'PASS' if results['model_metrics']['calibration_passed'] else 'FAIL'}]")
+        logger.info("")
+        logger.info("Classification Metrics:")
+        logger.info(f"  Accuracy: {results['classification_metrics']['accuracy']:.4f}")
+        logger.info(f"  Precision: {results['classification_metrics']['precision']:.4f}")
+        logger.info(f"  Recall: {results['classification_metrics']['recall']:.4f}")
+        logger.info(f"  F1 Score: {results['classification_metrics']['f1_score']:.4f}")
+        logger.info("")
+        logger.info(f"Overall Status: {results['overall_status']}")
+        if results['recommendations']:
+            logger.info("Recommendations:")
+            for rec in results['recommendations']:
+                logger.info(f"  - {rec}")
+        logger.info("=" * 60)
+
+
+    def main():
+        """Main entry point for model evaluation job."""
+        logger.info("=" * 60)
+        logger.info("Starting Sports Analytics Model Evaluation Job")
+        logger.info("=" * 60)
+        logger.info(f"Schedule: Nightly at 3 AM")
+        logger.info(f"Evaluation Time: {datetime.now().isoformat()}")
+
+        start_time = datetime.now()
+
+        try:
+            # Create Spark session
+            spark = create_spark_session()
+
+            # Read predictions from Kafka
+            predictions_df = read_predictions_from_kafka(spark)
+
+            # Read actual results from TimescaleDB
+            actuals_df = read_actual_results_from_timescaledb(spark)
+
+            # Join predictions with actuals
+            evaluation_df = join_predictions_with_actuals(predictions_df, actuals_df)
+
+            if evaluation_df.count() == 0:
+                logger.warning("No matching predictions with actual results found. Exiting.")
+                return
+
+            # Calculate evaluation metrics
+            log_loss, ll_count = calculate_log_loss(evaluation_df)
+            brier_score, bs_count = calculate_brier_score(evaluation_df)
+            mae, mae_count = calculate_mae_point_spread(evaluation_df)
+            calibration, calibration_df = calculate_calibration(evaluation_df)
+            additional_metrics = calculate_additional_metrics(evaluation_df)
+
+            # Compile results
+            results = compile_evaluation_results(
+                log_loss, ll_count,
+                brier_score, bs_count,
+                mae, mae_count,
+                calibration, calibration_df,
+                additional_metrics
+            )
+
+            # Log summary
+            log_evaluation_summary(results)
+
+            # Save results
+            save_results_locally(spark, results)
+            write_results_to_kafka(spark, results)
+
+            # Log completion
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+
+            logger.info("=" * 60)
+            logger.info("Model Evaluation Job Completed Successfully")
+            logger.info(f"Total duration: {duration:.2f} seconds")
+            logger.info("=" * 60)
+
+        except Exception as e:
+            logger.error(f"Model evaluation job failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
+        finally:
+            if 'spark' in locals():
+                spark.stop()
+
+
+    if __name__ == "__main__":
+        main()

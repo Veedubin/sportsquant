@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: betting-api-config
+  labels:
+    app: sports-platform
+    component: betting-api
+data:
+  KAFKA_BOOTSTRAP: "sports-cluster-kafka-bootstrap.default.svc.cluster.local:9092"
+  IGNITE_HOST: "ignite-service.default.svc.cluster.local"
+  IGNITE_PORT: "10800"
+  MLB_TRACKING_ENABLED: "true"
+  REDIS_URL: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: betting-api
+  labels:
+    app: sports-platform
+    component: betting-api
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: betting-api
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: betting-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: betting-api
+          image: sports-platform/poller:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.api.betting_api"]
+          ports:
+            - containerPort: 8080
+              name: http
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+            runAsUser: 1000
+          envFrom:
+            - configMapRef:
+                name: betting-api-config
+            - secretRef:
+                name: sports-api-credentials
+          env:
+            - name: OTEL_SERVICE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.monitoring:4317"
+            - name: OTEL_ENVIRONMENT
+              value: "production"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: betting-api
+  labels:
+    app: sports-platform
+    component: betting-api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: sports-platform
+    component: betting-api

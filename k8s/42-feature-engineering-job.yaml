@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: feature-engineering-run
+  labels:
+    app: sports-platform
+    component: feature-engineering
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: feature-engineering
+    spec:
+      serviceAccountName: sports-platform-sa
+      containers:
+        - name: feature-engineering
+          image: nba-ingest:latest
+          command: ["python", "-m", "src.cli.generate_report"]
+          envFrom:
+            - configMapRef:
+                name: nba-config
+            - secretRef:
+                name: nba-api-credentials
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "2Gi"
+      restartPolicy: OnFailure

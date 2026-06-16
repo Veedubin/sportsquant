@@ -1,0 +1,423 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sports-timescale-schema
+  namespace: default
+  labels:
+    app: timescale
+    component: database-schema
+# SQL schema for TimescaleDB hypertable tables
+# Apply with: kubectl apply -f 15-timescale-schema.yaml
+# Then execute: kubectl exec -n default <timescale-pod> -- psql -U postgres -d sports -f /sql/schema/data.sql
+data:
+  data.sql: |
+    -- NOTE: TimescaleDB Docker image defaults to database 'postgres'
+    -- Run this command first to create the sports_analytics database:
+    --   kubectl exec -n default <timescaledb-pod> -- psql -U postgres -c "CREATE DATABASE sports_analytics;"
+    -- Or use the init command: CREATE DATABASE IF NOT EXISTS sports_analytics;
+
+    -- Create the sports_analytics database if it doesn't exist
+    -- This connects to the default 'postgres' database to create our target database
+    \c postgres
+
+    CREATE DATABASE IF NOT EXISTS sports_analytics;
+
+    -- Connect to the sports_analytics database for all subsequent operations
+    \c sports_analytics
+
+    -- Enable TimescaleDB extension
+    CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+    -- Hypertable for live odds snapshots (time-series betting data)
+    CREATE TABLE IF NOT EXISTS nba_odds_snapshots (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        odds_home DECIMAL(5,2),
+        odds_away DECIMAL(5,2),
+        over_under DECIMAL(5,2),
+        sportsbook TEXT,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('nba_odds_snapshots', 'time');
+    CREATE INDEX IF NOT EXISTS idx_nba_odds_game_id ON nba_odds_snapshots (game_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_odds_sportsbook ON nba_odds_snapshots (sportsbook);
+
+    -- Hypertable for player statistics (real-time performance metrics)
+    CREATE TABLE IF NOT EXISTS nba_player_stats (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        player_id TEXT NOT NULL,
+        player_name TEXT NOT NULL,
+        team TEXT NOT NULL,
+        points INTEGER,
+        rebounds INTEGER,
+        assists INTEGER,
+        steals INTEGER,
+        blocks INTEGER,
+        minutes_played INTEGER,
+        field_goals_made INTEGER,
+        field_goals_attempted INTEGER,
+        three_pointers_made INTEGER,
+        three_pointers_attempted INTEGER,
+        free_throws_made INTEGER,
+        free_throws_attempted INTEGER,
+        turnovers INTEGER,
+        personal_fouls INTEGER
+    );
+
+    SELECT create_hypertable('nba_player_stats', 'time');
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_player_id ON nba_player_stats (player_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_game_id ON nba_player_stats (game_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_team ON nba_player_stats (team);
+
+    -- Regular table for NBA schedule (reference data, not time-series)
+    CREATE TABLE IF NOT EXISTS nba_schedule (
+        game_id TEXT PRIMARY KEY,
+        game_date TIMESTAMPTZ NOT NULL,
+        season TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        venue TEXT,
+        status TEXT,
+        home_score INTEGER,
+        away_score INTEGER,
+        period INTEGER,
+        game_time_remaining TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Regular table for NBA players (reference data, not time-series)
+    CREATE TABLE IF NOT EXISTS nba_players (
+        id SERIAL PRIMARY KEY,
+        player_id VARCHAR(100) NOT NULL,
+        player_name VARCHAR(200) NOT NULL,
+        season VARCHAR(20) NOT NULL,
+        team_id VARCHAR(50),
+        team_abbreviation VARCHAR(10),
+        first_season VARCHAR(10),
+        last_season VARCHAR(10),
+        fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(player_id, season)
+    );
+
+    -- Indexes for common queries
+    CREATE INDEX IF NOT EXISTS idx_nba_players_player ON nba_players(player_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_players_season ON nba_players(season);
+    CREATE INDEX IF NOT EXISTS idx_nba_players_team ON nba_players(team_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_players_name ON nba_players(player_name);
+
+    -- Regular table for NFL schedule (reference data, not time-series)
+    CREATE TABLE IF NOT EXISTS nfl_schedule (
+        game_id TEXT PRIMARY KEY,
+        game_date TIMESTAMPTZ NOT NULL,
+        season TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        venue TEXT,
+        status TEXT,
+        home_score INTEGER,
+        away_score INTEGER,
+        period INTEGER,
+        game_time_remaining TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Regular table for NHL schedule (reference data, not time-series)
+    CREATE TABLE IF NOT EXISTS nhl_schedule (
+        game_id TEXT PRIMARY KEY,
+        game_date TIMESTAMPTZ NOT NULL,
+        season TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        venue TEXT,
+        status TEXT,
+        home_score INTEGER,
+        away_score INTEGER,
+        period INTEGER,
+        game_time_remaining TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Regular table for MLB schedule (reference data, not time-series)
+    CREATE TABLE IF NOT EXISTS mlb_schedule (
+        game_id TEXT PRIMARY KEY,
+        game_date TIMESTAMPTZ NOT NULL,
+        season TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        venue TEXT,
+        status TEXT,
+        home_score INTEGER,
+        away_score INTEGER,
+        period INTEGER,
+        game_time_remaining TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Regular table for F1 schedule (reference data, not time-series)
+    -- team_home maps to driver_name, team_away maps to circuit_name
+    CREATE TABLE IF NOT EXISTS f1_schedule (
+        game_id TEXT PRIMARY KEY,
+        game_date TIMESTAMPTZ NOT NULL,
+        season TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        venue TEXT,
+        status TEXT,
+        home_score INTEGER,
+        away_score INTEGER,
+        period INTEGER,
+        game_time_remaining TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Regular table for WNBA schedule (reference data, not time-series)
+    CREATE TABLE IF NOT EXISTS wnba_schedule (
+        game_id TEXT PRIMARY KEY,
+        game_date TIMESTAMPTZ NOT NULL,
+        season TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        venue TEXT,
+        status TEXT,
+        home_score INTEGER,
+        away_score INTEGER,
+        period INTEGER,
+        game_time_remaining TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_wnba_schedule_date ON wnba_schedule (game_date);
+    CREATE INDEX IF NOT EXISTS idx_wnba_schedule_season ON wnba_schedule (season);
+
+    -- Hypertable for WNBA odds snapshots (time-series betting data)
+    CREATE TABLE IF NOT EXISTS wnba_odds_snapshots (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        odds_home DECIMAL(5,2),
+        odds_away DECIMAL(5,2),
+        over_under DECIMAL(5,2),
+        sportsbook TEXT,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('wnba_odds_snapshots', 'time');
+    CREATE INDEX IF NOT EXISTS idx_wnba_odds_game_id ON wnba_odds_snapshots (game_id);
+    CREATE INDEX IF NOT EXISTS idx_wnba_odds_sportsbook ON wnba_odds_snapshots (sportsbook);
+
+    -- Hypertable for WNBA player statistics (real-time performance metrics)
+    CREATE TABLE IF NOT EXISTS wnba_player_stats (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        player_id TEXT NOT NULL,
+        player_name TEXT NOT NULL,
+        team TEXT NOT NULL,
+        points INTEGER,
+        rebounds INTEGER,
+        assists INTEGER,
+        steals INTEGER,
+        blocks INTEGER,
+        minutes_played INTEGER,
+        field_goals_made INTEGER,
+        field_goals_attempted INTEGER,
+        three_pointers_made INTEGER,
+        three_pointers_attempted INTEGER,
+        free_throws_made INTEGER,
+        free_throws_attempted INTEGER,
+        turnovers INTEGER,
+        personal_fouls INTEGER
+    );
+
+    SELECT create_hypertable('wnba_player_stats', 'time');
+    CREATE INDEX IF NOT EXISTS idx_wnba_player_stats_player_id ON wnba_player_stats (player_id);
+    CREATE INDEX IF NOT EXISTS idx_wnba_player_stats_game_id ON wnba_player_stats (game_id);
+    CREATE INDEX IF NOT EXISTS idx_wnba_player_stats_team ON wnba_player_stats (team);
+
+    -- Hypertable for Steam moves (line movement tracking)
+    CREATE TABLE IF NOT EXISTS nba_steam_moves (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        bet_type TEXT NOT NULL,
+        team_selection TEXT,
+        line_value DECIMAL(6,2),
+        movement_direction TEXT,
+        steam_percentage INTEGER,
+        sportsbook TEXT,
+        sharp_money BOOLEAN DEFAULT FALSE
+    );
+
+    SELECT create_hypertable('nba_steam_moves', 'time');
+    CREATE INDEX IF NOT EXISTS idx_nba_steam_game_id ON nba_steam_moves (game_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_steam_bet_type ON nba_steam_moves (bet_type);
+    CREATE INDEX IF NOT EXISTS idx_nba_steam_sharp ON nba_steam_moves (sharp_money) WHERE sharp_money = TRUE;
+
+    -- Hypertable for model predictions (ML output storage)
+    CREATE TABLE IF NOT EXISTS nba_model_predictions (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        prediction_type TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        predicted_winner TEXT,
+        win_probability_home DECIMAL(5,4),
+        win_probability_away DECIMAL(5,4),
+        over_under_predicted DECIMAL(5,2),
+        over_under_probability_over DECIMAL(5,4),
+        projected_home_score DECIMAL(6,2),
+        projected_away_score DECIMAL(6,2),
+        model_confidence DECIMAL(5,4),
+        features_used JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('nba_model_predictions', 'time');
+    CREATE INDEX IF NOT EXISTS idx_nba_predictions_game_id ON nba_model_predictions (game_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_predictions_model ON nba_model_predictions (model_name, model_version);
+    CREATE INDEX IF NOT EXISTS idx_nba_predictions_type ON nba_model_predictions (prediction_type);
+
+    -- ============================================================
+    -- NFL Tables (odds snapshots and player stats)
+    -- ============================================================
+
+    -- Hypertable for NFL odds snapshots (time-series betting data)
+    CREATE TABLE IF NOT EXISTS nfl_odds_snapshots (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        odds_home DECIMAL(5,2),
+        odds_away DECIMAL(5,2),
+        over_under DECIMAL(5,2),
+        sportsbook TEXT,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('nfl_odds_snapshots', 'time');
+    CREATE INDEX IF NOT EXISTS idx_nfl_odds_game_id ON nfl_odds_snapshots (game_id);
+    CREATE INDEX IF NOT EXISTS idx_nfl_odds_sportsbook ON nfl_odds_snapshots (sportsbook);
+
+    -- Hypertable for NFL player statistics (real-time performance metrics)
+    CREATE TABLE IF NOT EXISTS nfl_player_stats (
+        time TIMESTAMPTZ NOT NULL,
+        player_id TEXT NOT NULL,
+        player_name TEXT NOT NULL,
+        team TEXT NOT NULL,
+        game_id TEXT NOT NULL,
+        stats JSONB,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('nfl_player_stats', 'time');
+    CREATE INDEX IF NOT EXISTS idx_nfl_player_stats_player_id ON nfl_player_stats (player_id);
+    CREATE INDEX IF NOT EXISTS idx_nfl_player_stats_game_id ON nfl_player_stats (game_id);
+    CREATE INDEX IF NOT EXISTS idx_nfl_player_stats_team ON nfl_player_stats (team);
+
+    -- ============================================================
+    -- NHL Tables (odds snapshots and player stats)
+    -- ============================================================
+
+    -- Hypertable for NHL odds snapshots (time-series betting data)
+    CREATE TABLE IF NOT EXISTS nhl_odds_snapshots (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        odds_home DECIMAL(5,2),
+        odds_away DECIMAL(5,2),
+        over_under DECIMAL(5,2),
+        sportsbook TEXT,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('nhl_odds_snapshots', 'time');
+    CREATE INDEX IF NOT EXISTS idx_nhl_odds_game_id ON nhl_odds_snapshots (game_id);
+    CREATE INDEX IF NOT EXISTS idx_nhl_odds_sportsbook ON nhl_odds_snapshots (sportsbook);
+
+    -- Hypertable for NHL player statistics (real-time performance metrics)
+    CREATE TABLE IF NOT EXISTS nhl_player_stats (
+        time TIMESTAMPTZ NOT NULL,
+        player_id TEXT NOT NULL,
+        player_name TEXT NOT NULL,
+        team TEXT NOT NULL,
+        game_id TEXT NOT NULL,
+        stats JSONB,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('nhl_player_stats', 'time');
+    CREATE INDEX IF NOT EXISTS idx_nhl_player_stats_player_id ON nhl_player_stats (player_id);
+    CREATE INDEX IF NOT EXISTS idx_nhl_player_stats_game_id ON nhl_player_stats (game_id);
+    CREATE INDEX IF NOT EXISTS idx_nhl_player_stats_team ON nhl_player_stats (team);
+
+    -- ============================================================
+    -- MLB Tables (odds snapshots and player stats)
+    -- ============================================================
+
+    -- Hypertable for MLB odds snapshots (time-series betting data)
+    CREATE TABLE IF NOT EXISTS mlb_odds_snapshots (
+        time TIMESTAMPTZ NOT NULL,
+        game_id TEXT NOT NULL,
+        team_home TEXT NOT NULL,
+        team_away TEXT NOT NULL,
+        odds_home DECIMAL(5,2),
+        odds_away DECIMAL(5,2),
+        over_under DECIMAL(5,2),
+        sportsbook TEXT,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('mlb_odds_snapshots', 'time');
+    CREATE INDEX IF NOT EXISTS idx_mlb_odds_game_id ON mlb_odds_snapshots (game_id);
+    CREATE INDEX IF NOT EXISTS idx_mlb_odds_sportsbook ON mlb_odds_snapshots (sportsbook);
+
+    -- Hypertable for MLB player statistics (real-time performance metrics)
+    CREATE TABLE IF NOT EXISTS mlb_player_stats (
+        time TIMESTAMPTZ NOT NULL,
+        player_id TEXT NOT NULL,
+        player_name TEXT NOT NULL,
+        team TEXT NOT NULL,
+        game_id TEXT NOT NULL,
+        stats JSONB,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('mlb_player_stats', 'time');
+    CREATE INDEX IF NOT EXISTS idx_mlb_player_stats_player_id ON mlb_player_stats (player_id);
+    CREATE INDEX IF NOT EXISTS idx_mlb_player_stats_game_id ON mlb_player_stats (game_id);
+    CREATE INDEX IF NOT EXISTS idx_mlb_player_stats_team ON mlb_player_stats (team);
+
+    -- ============================================================
+    -- F1 Tables (race results)
+    -- ============================================================
+
+    -- Hypertable for F1 race results (time-series motorsport data)
+    CREATE TABLE IF NOT EXISTS f1_race_results (
+        time TIMESTAMPTZ NOT NULL,
+        race_id TEXT NOT NULL,
+        race_name TEXT NOT NULL,
+        circuit TEXT NOT NULL,
+        position INTEGER,
+        driver TEXT NOT NULL,
+        constructor TEXT NOT NULL,
+        laps INTEGER,
+        time_gap TEXT,
+        points INTEGER,
+        captured_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    SELECT create_hypertable('f1_race_results', 'time');
+    CREATE INDEX IF NOT EXISTS idx_f1_results_race_id ON f1_race_results (race_id);
+    CREATE INDEX IF NOT EXISTS idx_f1_results_driver ON f1_race_results (driver);
+    CREATE INDEX IF NOT EXISTS idx_f1_results_constructor ON f1_race_results (constructor);

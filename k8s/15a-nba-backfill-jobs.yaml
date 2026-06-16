@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nba-backfill-2025-26
+  labels:
+    app: nba-stats-fetcher
+    component: datasource
+    task: backfill
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: nba-stats-fetcher
+        component: datasource
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: nba-stats-fetcher
+          image: nba-stats-client:local
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.datasource.nba_stats.client"]
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: NBA_SEASON
+              value: "2025-26"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nba-backfill-2023-24
+  labels:
+    app: nba-stats-fetcher
+    component: datasource
+    task: backfill
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: nba-stats-fetcher
+        component: datasource
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: nba-stats-fetcher
+          image: nba-stats-client:local
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.datasource.nba_stats.client"]
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: NBA_SEASON
+              value: "2023-24"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nba-backfill-2022-23
+  labels:
+    app: nba-stats-fetcher
+    component: datasource
+    task: backfill
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: nba-stats-fetcher
+        component: datasource
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: nba-stats-fetcher
+          image: nba-stats-client:local
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.datasource.nba_stats.client"]
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: NBA_SEASON
+              value: "2022-23"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"

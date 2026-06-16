@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: odds-ingest-config
+  namespace: default
+  labels:
+    app: sports-platform
+    component: odds-ingest
+    league: odds
+data:
+  LEAGUE_API_BASE_URL: "https://api.the-odds-api.com/v4/sports"
+  POLL_INTERVAL_SECONDS: "60"
+  RATE_LIMIT_REQUESTS_PER_MINUTE: "30"
+  LEAGUE_CODE: "ODDS"
+  KAFKA_BOOTSTRAP_SERVERS: "sports-cluster-kafka-bootstrap.default.svc.cluster.local:9092"
+  KAFKA_TOPIC: "odds-updates"
+  SCHEDULE_TOPIC: "sports-schedules"

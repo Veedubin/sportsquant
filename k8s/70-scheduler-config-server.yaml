@@ -1,0 +1,290 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-config-seed
+  labels:
+    app: sports-platform
+    component: scheduler-config-server
+data:
+  nba-config.json: |
+    {
+      "league_code": "NBA",
+      "enabled": true,
+      "sport_key": "basketball_nba",
+      "kafka_topic": "nba-games",
+      "schedule_topic": "sports-schedules",
+      "season_start_month": 10,
+      "season_end_month": 6,
+      "polling": {
+        "normal_stats_interval_seconds": 43200,
+        "normal_schedule_interval_seconds": 86400,
+        "game_day_stats_interval_seconds": 300,
+        "post_game_duration_seconds": 3600,
+        "pre_game_threshold_hours": 4
+      }
+    }
+  nfl-config.json: |
+    {
+      "league_code": "NFL",
+      "enabled": false,
+      "sport_key": "americanfootball_nfl",
+      "kafka_topic": "nfl-games",
+      "schedule_topic": "sports-schedules",
+      "season_start_month": 9,
+      "season_end_month": 2,
+      "polling": {
+        "normal_stats_interval_seconds": 43200,
+        "normal_schedule_interval_seconds": 86400,
+        "game_day_stats_interval_seconds": 300,
+        "post_game_duration_seconds": 3600,
+        "pre_game_threshold_hours": 4
+      }
+    }
+  nhl-config.json: |
+    {
+      "league_code": "NHL",
+      "enabled": false,
+      "sport_key": "icehockey_nhl",
+      "kafka_topic": "nhl-games",
+      "schedule_topic": "sports-schedules",
+      "season_start_month": 10,
+      "season_end_month": 6,
+      "polling": {
+        "normal_stats_interval_seconds": 43200,
+        "normal_schedule_interval_seconds": 86400,
+        "game_day_stats_interval_seconds": 300,
+        "post_game_duration_seconds": 3600,
+        "pre_game_threshold_hours": 4
+      }
+    }
+  mlb-config.json: |
+    {
+      "league_code": "MLB",
+      "enabled": false,
+      "sport_key": "baseball_mlb",
+      "kafka_topic": "mlb-games",
+      "schedule_topic": "sports-schedules",
+      "season_start_month": 3,
+      "season_end_month": 10,
+      "polling": {
+        "normal_stats_interval_seconds": 43200,
+        "normal_schedule_interval_seconds": 86400,
+        "game_day_stats_interval_seconds": 300,
+        "post_game_duration_seconds": 3600,
+        "pre_game_threshold_hours": 4
+      }
+    }
+  f1-config.json: |
+    {
+      "league_code": "F1",
+      "enabled": false,
+      "sport_key": "motorsport_f1",
+      "kafka_topic": "f1-races",
+      "schedule_topic": "sports-schedules",
+      "season_start_month": 3,
+      "season_end_month": 11,
+      "polling": {
+        "normal_stats_interval_seconds": 43200,
+        "normal_schedule_interval_seconds": 86400,
+        "game_day_stats_interval_seconds": 300,
+        "post_game_duration_seconds": 3600,
+        "pre_game_threshold_hours": 4
+      }
+    }
+  control.json: |
+    {
+      "agents": {
+        "NBA": {"enabled": true, "trigger": false, "last_triggered": null},
+        "NFL": {"enabled": false, "trigger": false, "last_triggered": null},
+        "NHL": {"enabled": false, "trigger": false, "last_triggered": null},
+        "MLB": {"enabled": false, "trigger": false, "last_triggered": null},
+        "F1": {"enabled": false, "trigger": false, "last_triggered": null}
+      }
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scheduler-config
+  labels:
+    app: sports-platform
+    component: scheduler-config-server
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+  storageClassName: standard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-config-server
+  labels:
+    app: sports-platform
+    component: scheduler-config-server
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: scheduler-config-server
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: scheduler-config-server
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: init-copy-seed
+          image: sports-platform/poller:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Copying seed configs to /data..."
+              mkdir -p /data/nba /data/nfl /data/nhl /data/mlb /data/f1 /data/global
+              for f in /seed-configs/*-config.json; do
+                if [ -f "$f" ]; then
+                  league=$(basename "$f" | sed 's/-config.json//')
+                  cp "$f" "/data/$league/config.json"
+                  echo "Copied $f to /data/$league/config.json"
+                fi
+              done
+              # Copy control.json for global config
+              if [ -f "/seed-configs/control.json" ]; then
+                cp /seed-configs/control.json /data/global/control.json
+                echo "Copied control.json to /data/global/control.json"
+              else
+                echo "ERROR: control.json not found in ConfigMap"
+                ls -la /seed-configs/
+              fi
+              echo "Seed configs copied successfully"
+          volumeMounts:
+            - name: seed-configs
+              mountPath: /seed-configs
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+      containers:
+        - name: scheduler-config-server
+          image: sports-platform/poller:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.scheduler_config_api.main"]
+          ports:
+            - containerPort: 8081
+              name: http
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+            runAsUser: 1000
+          env:
+            - name: OTEL_SERVICE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.monitoring:4317"
+            - name: OTEL_ENVIRONMENT
+              value: "production"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: seed-configs
+          configMap:
+            name: scheduler-config-seed
+        - name: data
+          persistentVolumeClaim:
+            claimName: scheduler-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler-config-server
+  labels:
+    app: sports-platform
+    component: scheduler-config-server
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8081
+      targetPort: 8081
+      protocol: TCP
+      name: http
+  selector:
+    app: sports-platform
+    component: scheduler-config-server
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: scheduler-config-server
+  labels:
+    app: sports-platform
+    component: scheduler-config-server
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: scheduler-config.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: scheduler-config-server
+                port:
+                  number: 8081

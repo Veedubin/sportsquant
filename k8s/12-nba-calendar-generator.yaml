@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nba-calendar-generator
+  labels:
+    app: nba-calendar-generator
+    component: ingest
+    environment: production
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: nba-calendar-generator
+        component: ingest
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: nba-calendar-generator
+          image: nba-ingest:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "nba_ingest.calendar_generator"]
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: bootstrap_servers
+            - name: NBA_API_BASE_URL
+              value: "https://api.nba.com"
+            - name: RATE_LIMIT_REQUESTS_PER_SECOND
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: odds-api-credentials
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: app-config
+          configMap:
+            name: nba-ingest-config

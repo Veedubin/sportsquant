@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: tempo
+data:
+  tempo.yaml: |
+    # Tempo configuration for Grafana OSS stack
+    # Using grafana/tempo:2.5.0
+
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9095
+
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /tmp/tempo/blocks
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: tempo
+spec:
+  type: ClusterIP
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+  selector:
+    app: sports-platform
+    component: tempo
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: tempo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: tempo
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: tempo
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:latest
+          args:
+            - -config.file=/etc/tempo/tempo.yaml
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo
+            - name: storage
+              mountPath: /tmp/tempo
+      volumes:
+        - name: config
+          configMap:
+            name: tempo-config
+        - name: storage
+          persistentVolumeClaim:
+            claimName: tempo-storage
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-storage
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: tempo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

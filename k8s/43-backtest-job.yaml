@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backtest-run
+  labels:
+    app: sports-platform
+    component: backtesting
+spec:
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: backtesting
+    spec:
+      serviceAccountName: sports-platform-sa
+      containers:
+        - name: backtest
+          image: nba-ingest:latest
+          command: ["python", "-m", "src.betting_core.backtest_v3"]
+          envFrom:
+            - configMapRef:
+                name: nba-config
+            - secretRef:
+                name: nba-api-credentials
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "2Gi"
+      restartPolicy: OnFailure

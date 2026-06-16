@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  labels:
+    app: sports-platform
+    component: kafka-config
+data:
+  bootstrap_servers: "sports-cluster-kafka-bootstrap.default.svc.cluster.local:9092"
+  consumer_group_prefix: "sports-analytics"
+  auto_offset_reset: "latest"
+  enable_auto_commit: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: league-config
+  labels:
+    app: sports-platform
+    component: league-config
+data:
+  # NBA Configuration
+  NBA_API_URL: "https://api.the-odds-api.com/v4/sports/basketball_nba"
+  NBA_RATE_LIMIT: "5"
+  NBA_POLL_INTERVAL: "60"
+
+  # NFL Configuration
+  NFL_API_URL: "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
+  NFL_RATE_LIMIT: "5"
+  NFL_POLL_INTERVAL: "60"
+
+  # NHL Configuration
+  NHL_API_URL: "https://api.the-odds-api.com/v4/sports/icehockey_nhl"
+  NHL_RATE_LIMIT: "5"
+  NHL_POLL_INTERVAL: "60"
+
+  # MLB Configuration
+  MLB_API_URL: "https://api.the-odds-api.com/v4/sports/baseball_mlb"
+  MLB_RATE_LIMIT: "5"
+  MLB_POLL_INTERVAL: "60"
+
+  # F1 Configuration
+  F1_API_URL: "https://api.the-odds-api.com/v4/sports/formula1"
+  F1_RATE_LIMIT: "5"
+  F1_POLL_INTERVAL: "60"

@@ -1,0 +1,74 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nba-odds
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nfl-odds
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nhl-odds
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: mlb-odds
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: f1-odds
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824

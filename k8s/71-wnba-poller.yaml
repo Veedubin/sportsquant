@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wnba-poller
+  labels:
+    app: sports-platform
+    component: poller
+    league: wnba
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: poller
+      league: wnba
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: poller
+        league: wnba
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: wnba-poller
+          image: sports-platform/unified-poller:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AGENT_TYPE
+              value: "WNBA"
+            - name: CONFIG_SERVER_URL
+              value: "http://scheduler-config-server:8081"
+            - name: KAFKA_BOOTSTRAP
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: LOG_LEVEL
+              value: "INFO"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          ports:
+            - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5

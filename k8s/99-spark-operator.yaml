@@ -1,0 +1,42 @@
+# SparkOperator Installation Manifest
+# This file installs the SparkOperator CRDs and operator via Helm
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spark-operator
+  labels:
+    app.kubernetes.io/name: spark-operator
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-operator-install
+  namespace: spark-operator
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      serviceAccountName: tiller
+      containers:
+        - name: helm
+          image: alpine/helm:3.15.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              helm repo add spark-operator https://googlecloudplatform/spark-operator
+              helm install spark-operator spark-operator/spark-operator \
+                --create-namespace \
+                --namespace spark-operator \
+                --set sparkJobNamespace=default \
+                --set webhook.enable=true \
+                --set resource.type=DaemonSet
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /root/.kube
+      volumes:
+        - name: kubeconfig
+          secret:
+            secretName: kubeconfig
+      restartPolicy: Never

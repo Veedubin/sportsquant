@@ -1,0 +1,112 @@
+# Debezium Server Deployment for JSON to JDBC Pipeline
+# This deployment consumes JSON messages from Kafka topics and writes to TimescaleDB
+# Unlike Confluent Kafka Connect, Debezium Server supports JSON natively
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: debezium-server-config
+  labels:
+    app: sports-platform
+    component: debezium-server
+data:
+  application.properties: |
+    # Debezium Server Configuration
+    # Main configuration for consuming Kafka messages and writing to JDBC sink
+
+    # Bootstrap servers for Kafka
+    debezium.source.kafka.bootstrap.servers=sports-cluster-kafka-bootstrap.default.svc:9092
+
+    # Consumer group
+    debezium.source.consumer.group.id=debezium-server-jdbc-sink
+
+    # Topic definitions - will use source/topic.include to filter
+    # We handle multiple topics via multiple sink bindings
+
+    # Format converter - JSON support
+    debezium.source.value.converter=org.apache.kafka.connect.json.JsonConverter
+    debezium.source.key.converter=org.apache.kafka.connect.json.JsonConverter
+
+    # JSON converter settings
+    debezium.source.json.converter.schemas.enable=false
+    debezium.source.json.fail.on.error=false
+
+    # Sink configuration - JDBC
+    debezium.sink.jdbc.url=jdbc:postgresql://timescaledb.default.svc:5432/sports_analytics
+    debezium.sink.jdbc.user=postgres
+    debezium.sink.jdbc.password=password
+
+    # Connection pool
+    debezium.sink.jdbc.max.pool.size=10
+    debezium.sink.jdbc.initial.pool.size=5
+
+    # Health check
+    debezium.health.check.topic=false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debezium-server-jdbc
+  labels:
+    app: sports-platform
+    component: debezium-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: debezium-server
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: debezium-server
+    spec:
+      serviceAccountName: default
+      containers:
+        - name: debezium-server
+          image: debezium/server:3.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: debezium-server-config
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: debezium-server-jdbc
+  labels:
+    app: sports-platform
+    component: debezium-server
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: sports-platform
+    component: debezium-server

@@ -1,0 +1,208 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: monitoring
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+        spike_limit_mib: 128
+
+    exporters:
+      logging:
+        verbosity: normal
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: sports_platform
+        send_timestamps: true
+      otlp/tempo:
+        endpoint: "tempo:4317"
+        tls:
+          insecure: true
+      loki:
+        endpoint: "http://loki:3100/loki/api/v1/push"
+        labels:
+          record:
+            - attributes["service.name"]
+            - attributes["level"]
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      zpages:
+        endpoint: 0.0.0.0:55679
+
+    service:
+      extensions: [health_check, zpages]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch, memory_limiter]
+          exporters: [logging, otlp/tempo]
+        metrics:
+          receivers: [otlp]
+          processors: [batch, memory_limiter]
+          exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [batch, memory_limiter]
+          exporters: [logging, loki]
+      
+      telemetry:
+        logs:
+          level: info
+          initial_fields:
+            service: "otel-collector"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+      annotations:
+        monitoring.io/scrape: "true"
+        monitoring.io/path: "/metrics"
+        monitoring.io/port: "8889"
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector:0.104.0
+          args:
+            - --config=/etc/otel-collector-config.yaml
+            - --set=service.telemetry.logs.level=info
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+              protocol: TCP
+            - containerPort: 4318
+              name: otlp-http
+              protocol: TCP
+            - containerPort: 8889
+              name: metrics
+              protocol: TCP
+            - containerPort: 13133
+              name: health-check
+              protocol: TCP
+            - containerPort: 55679
+              name: zpages
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel-collector-config.yaml
+              subPath: otel-collector-config.yaml
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+              ephemeral-storage: 1Gi
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+            items:
+              - key: otel-collector-config.yaml
+                path: otel-collector-config.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: monitoring
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - port: 4317
+      targetPort: 4317
+      name: otlp-grpc
+      protocol: TCP
+    - port: 4318
+      targetPort: 4318
+      name: otlp-http
+      protocol: TCP
+    - port: 8889
+      targetPort: 8889
+      name: metrics
+      protocol: TCP
+    - port: 13133
+      targetPort: 13133
+      name: health-check
+      protocol: TCP
+    - port: 55679
+      targetPort: 55679
+      name: zpages
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector-headless
+  namespace: monitoring
+  labels:
+    app: otel-collector
+spec:
+  clusterIP: None
+  selector:
+    app: otel-collector
+  ports:
+    - port: 4317
+      targetPort: 4317
+      name: otlp-grpc
+    - port: 4318
+      targetPort: 4318
+      name: otlp-http

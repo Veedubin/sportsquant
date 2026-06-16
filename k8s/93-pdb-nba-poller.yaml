@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nba-poller-pdb
+  labels:
+    app: sports-platform
+    component: poller
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: poller

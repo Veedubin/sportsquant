@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: kafka-pvc }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: standard
+  resources: { requests: { storage: 20Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: timescale-pvc }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: standard
+  resources: { requests: { storage: 10Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: ignite-pvc }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: standard
+  resources: { requests: { storage: 10Gi } }
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-output-pvc
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: standard
+  resources: { requests: { storage: 10Gi } }

@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-ignite3-config
+  labels:
+    app: sports-platform
+    component: spark
+data:
+  spark-defaults.conf: |
+    spark.master                     spark://spark-master:7077
+    spark.submit.deployMode          cluster
+    spark.driver.memory              4g
+    spark.executor.memory            8g
+    spark.executor.cores             4
+    spark.sql.adaptive.enabled       true
+    spark.sql.adaptive.coalescePartitions.enabled true
+    spark.sql.shuffle.partitions     200
+    
+    # RAPIDS GPU Acceleration
+    spark.rapids.sql.enabled         true
+    spark.rapids.memory.gpu.pooling.enabled true
+    spark.rapids.memory.gpu.size     8g
+    spark.rapids.sql.explain         ALL
+    
+    # Ignite 3 JDBC Configuration
+    spark.sql.ignite.jdbc.url        jdbc:postgresql://timescaledb.default.svc:5432/sports_analytics
+    spark.sql.ignite.jdbc.user       postgres
+    spark.sql.ignite.jdbc.password   password
+    spark.sql.ignite.jdbc.driver     org.postgresql.Driver
+    
+    # Spark History Server
+    spark.eventLog.enabled           true
+    spark.eventLog.dir               hdfs://hdfs-namenode:8020/spark-history

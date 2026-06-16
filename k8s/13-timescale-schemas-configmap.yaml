@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timescale-schemas
+  labels:
+    app: sports-platform
+    component: database
+data:
+  odds_events.sql: |
+    -- Schema for sports betting odds events table
+    -- This table stores odds data from The-Odds-API for all sports leagues
+
+    CREATE TABLE IF NOT EXISTS odds_events (
+        id SERIAL PRIMARY KEY,
+        game_id VARCHAR(100) NOT NULL,
+        sport_key VARCHAR(50) NOT NULL,
+        event_id VARCHAR(100) NOT NULL,
+        commence_time TIMESTAMP WITH TIME ZONE,
+        home_team VARCHAR(200),
+        away_team VARCHAR(200),
+        market VARCHAR(50) NOT NULL,
+        outcome_name VARCHAR(200) NOT NULL,
+        outcome_price DECIMAL(10, 4),
+        outcome_point DECIMAL(10, 4),
+        bookmaker VARCHAR(200) NOT NULL,
+        last_update TIMESTAMP WITH TIME ZONE,
+        timestamp BIGINT,
+        poll_date VARCHAR(20),
+        fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(sport_key, event_id, market, outcome_name, bookmaker)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_odds_events_sport ON odds_events(sport_key);
+    CREATE INDEX IF NOT EXISTS idx_odds_events_event ON odds_events(event_id);
+    CREATE INDEX IF NOT EXISTS idx_odds_events_commence ON odds_events(commence_time);
+    CREATE INDEX IF NOT EXISTS idx_odds_events_bookmaker ON odds_events(bookmaker);
+    CREATE INDEX IF NOT EXISTS idx_odds_events_fetched ON odds_events(fetched_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_odds_events_sport_event ON odds_events(sport_key, event_id);
+    CREATE INDEX IF NOT EXISTS idx_odds_events_time_range ON odds_events(commence_time, fetched_at);
+
+  nba_player_stats.sql: |
+    -- Schema for NBA player statistics table
+    -- This table stores player game stats for the NBA
+
+    CREATE TABLE IF NOT EXISTS nba_player_stats (
+        id SERIAL PRIMARY KEY,
+        game_id VARCHAR(100) NOT NULL,
+        season INTEGER NOT NULL,
+        season_type VARCHAR(50),
+        game_date VARCHAR(20),
+        matchup VARCHAR(100),
+        player_id VARCHAR(100),
+        player_name VARCHAR(200),
+        team VARCHAR(200),
+        team_abbreviation VARCHAR(10),
+        points FLOAT,
+        rebounds FLOAT,
+        assists FLOAT,
+        minutes FLOAT,
+        fg_pct FLOAT,
+        fg3_pct FLOAT,
+        ft_pct FLOAT,
+        steals FLOAT,
+        blocks FLOAT,
+        turnovers FLOAT,
+        fouls FLOAT,
+        plus_minus FLOAT,
+        fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        timestamp BIGINT,
+        UNIQUE(game_id, player_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_game ON nba_player_stats(game_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_player ON nba_player_stats(player_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_date ON nba_player_stats(game_date);
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_season ON nba_player_stats(season);
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_team ON nba_player_stats(team_abbreviation);
+    CREATE INDEX IF NOT EXISTS idx_nba_player_stats_player_season ON nba_player_stats(player_id, season);
+
+  sports_consensus.sql: |
+    -- Schema for sports betting consensus/steam moves
+    -- Tracks line movement and consensus data across bookmakers
+
+    CREATE TABLE IF NOT EXISTS sports_consensus (
+        id SERIAL PRIMARY KEY,
+        event_id VARCHAR(100) NOT NULL,
+        sport_key VARCHAR(50) NOT NULL,
+        commence_time TIMESTAMP WITH TIME ZONE,
+        home_team VARCHAR(200),
+        away_team VARCHAR(200),
+        market VARCHAR(50) NOT NULL,
+        outcome_name VARCHAR(200) NOT NULL,
+        consensus_price DECIMAL(10, 4),
+        consensus_point DECIMAL(10, 4),
+        move_type VARCHAR(20),
+        move_percent FLOAT,
+        sharp_percent FLOAT,
+        ticket_count INTEGER,
+        percent_bets FLOAT,
+        money_percent FLOAT,
+        bookmakers_count INTEGER,
+        timestamp BIGINT,
+        fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(event_id, market, outcome_name)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sports_consensus_event ON sports_consensus(event_id);
+    CREATE INDEX IF NOT EXISTS idx_sports_consensus_sport ON sports_consensus(sport_key);
+    CREATE INDEX IF NOT EXISTS idx_sports_consensus_move ON sports_consensus(move_type);
+    CREATE INDEX IF NOT EXISTS idx_sports_consensus_fetched ON sports_consensus(fetched_at DESC);

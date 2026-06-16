@@ -1,0 +1,488 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-model-training
+  namespace: default
+  labels:
+    app: spark
+    component: model-training
+data:
+  model_training.py: |
+    """
+    Sports Analytics Model Training Script
+
+    This Spark job reads data from Kafka topics (live odds, player stats, game results),
+    enriches features from Apache Ignite, trains a RandomForest model for game prediction,
+    and outputs predictions to Kafka.
+    """
+    import logging
+    import sys
+    import json
+    from datetime import datetime
+    from decimal import Decimal
+
+    from pyspark.sql import SparkSession
+    from pyspark.sql.functions import (
+        col, from_json, when, avg, sum as spark_sum, count,
+        max as spark_max, min as spark_min, stddev,
+        lit, current_timestamp, sha2, concat
+    )
+    from pyspark.sql.types import (
+        StructType, StructField, StringType, DoubleType,
+        IntegerType, TimestampType, MapType
+    )
+    from pyspark.ml.feature import VectorAssembler, StringIndexer
+    from pyspark.ml import Pipeline
+    from pyspark.ml.regression import RandomForestRegressor
+    from pyspark.ml.evaluation import RegressionEvaluator
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logger = logging.getLogger(__name__)
+
+    # Kafka configuration
+    KAFKA_BOOTSTRAP_SERVERS = "sports-cluster-kafka-bootstrap:9092"
+    KAFKA_INPUT_TOPICS = "sports.analytics.live-odds,sports.analytics.player-stats,sports.analytics.game-results"
+    KAFKA_OUTPUT_TOPIC = "sports.analytics.model-predictions"
+
+    # Ignite configuration
+    IGNITE_URL = "ignite-service:10800"
+
+    # Model configuration
+    MODEL_VERSION = datetime.now().strftime("%Y%m%d_%H%M%S")
+    MODEL_NAME = "sports-game-predictor-rf"
+
+    # Schema definitions
+    ODDS_SCHEMA = StructType([
+        StructField("game_id", StringType(), True),
+        StructField("team_home", StringType(), True),
+        StructField("team_away", StringType(), True),
+        StructField("odds_home", DoubleType(), True),
+        StructField("odds_away", DoubleType(), True),
+        StructField("over_under", DoubleType(), True),
+        StructField("sportsbook", StringType(), True),
+        StructField("captured_at", TimestampType(), True)
+    ])
+
+    PLAYER_STATS_SCHEMA = StructType([
+        StructField("game_id", StringType(), True),
+        StructField("player_id", StringType(), True),
+        StructField("player_name", StringType(), True),
+        StructField("team", StringType(), True),
+        StructField("points", IntegerType(), True),
+        StructField("rebounds", IntegerType(), True),
+        StructField("assists", IntegerType(), True),
+        StructField("steals", IntegerType(), True),
+        StructField("blocks", IntegerType(), True),
+        StructField("minutes_played", IntegerType(), True),
+        StructField("field_goals_made", IntegerType(), True),
+        StructField("field_goals_attempted", IntegerType(), True),
+        StructField("three_pointers_made", IntegerType(), True),
+        StructField("three_pointers_attempted", IntegerType(), True),
+        StructField("turnovers", IntegerType(), True),
+        StructField("personal_fouls", IntegerType(), True),
+        StructField("time", TimestampType(), True)
+    ])
+
+    GAME_RESULTS_SCHEMA = StructType([
+        StructField("game_id", StringType(), True),
+        StructField("team_home", StringType(), True),
+        StructField("team_away", StringType(), True),
+        StructField("home_score", IntegerType(), True),
+        StructField("away_score", IntegerType(), True),
+        StructField("winner", StringType(), True),
+        StructField("home_win", IntegerType(), True),
+        StructField("period", IntegerType(), True),
+        StructField("status", StringType(), True),
+        StructField("game_date", TimestampType(), True)
+    ])
+
+
+    def create_spark_session():
+        """Create and configure Spark session with RAPIDS GPU acceleration."""
+        logger.info("Initializing Spark session with GPU support")
+
+        spark = SparkSession.builder \
+            .appName("SportsModelTraining") \
+            .config("spark.driver.memory", "4g") \
+            .config("spark.driver.maxResultSize", "2g") \
+            .config("spark.executor.memory", "8g") \
+            .config("spark.executor.cores", "4") \
+            .config("spark.sql.shuffle.partitions", "200") \
+            .config("spark.sql.adaptive.enabled", "true") \
+            .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
+            .config("spark.sql.adaptive.skewJoin.enabled", "true") \
+            .config("spark.rapids.sql.enabled", "true") \
+            .config("spark.rapids.sql.concurrentGpuTasks", "2") \
+            .config("spark.rapids.memory.gpu.minAllocFraction", "0.1") \
+            .config("spark.rapids.memory.gpu.maxAllocFraction", "0.9") \
+            .getOrCreate()
+
+        logger.info("Spark session initialized successfully")
+        logger.info(f"Spark version: {spark.version}")
+        logger.info(f"GPU available: {spark.conf.get('spark.rapids.sql.enabled')}")
+
+        return spark
+
+
+    def read_kafka_batch(spark, topic, schema):
+        """Read batch data from Kafka topic for training."""
+        logger.info(f"Reading batch data from Kafka topic: {topic}")
+
+        try:
+            df = spark.read \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS) \
+                .option("subscribe", topic) \
+                .option("startingOffsets", "earliest") \
+                .option("endingOffsets", "latest") \
+                .load()
+
+            # Parse JSON and apply schema
+            parsed_df = df.select(
+                from_json(col("value").cast("string"), schema).alias("data")
+            ).select("data.*")
+
+            return parsed_df
+
+        except Exception as e:
+            logger.error(f"Error reading Kafka topic {topic}: {e}")
+            raise
+
+
+    def aggregate_player_stats(player_stats_df):
+        """Aggregate player stats to team level for each game."""
+        logger.info("Aggregating player statistics to team level")
+
+        # Calculate team-level aggregations
+        team_stats = player_stats_df.groupBy("game_id", "team").agg(
+            spark_sum("points").alias("total_points"),
+            spark_sum("rebounds").alias("total_rebounds"),
+            spark_sum("assists").alias("total_assists"),
+            spark_sum("steals").alias("total_steals"),
+            spark_sum("blocks").alias("total_blocks"),
+            spark_sum("minutes_played").alias("total_minutes"),
+            spark_sum("field_goals_made").alias("total_fg_made"),
+            spark_sum("field_goals_attempted").alias("total_fg_attempted"),
+            spark_sum("three_pointers_made").alias("total_3pt_made"),
+            spark_sum("three_pointers_attempted").alias("total_3pt_attempted"),
+            spark_sum("turnovers").alias("total_turnovers"),
+            avg("points").alias("avg_points_per_player"),
+            count("player_id").alias("player_count")
+        ).fillna(0)
+
+        # Calculate shooting percentages
+        team_stats = team_stats.withColumn(
+            "fg_percentage",
+            when(col("total_fg_attempted") > 0,
+                 col("total_fg_made") / col("total_fg_attempted")).otherwise(0)
+        ).withColumn(
+            "three_pt_percentage",
+            when(col("total_3pt_attempted") > 0,
+                 col("total_3pt_made") / col("total_3pt_attempted")).otherwise(0)
+        )
+
+        return team_stats
+
+
+    def join_features(odds_df, player_stats_df, game_results_df):
+        """Join all feature sources into a unified training dataset."""
+        logger.info("Joining features from multiple sources")
+
+        # Aggregate player stats
+        home_stats = aggregate_player_stats(player_stats_df) \
+            .withColumnRenamed("team", "team_home") \
+            .withColumnRenamed("total_points", "home_total_points") \
+            .withColumnRenamed("total_rebounds", "home_total_rebounds") \
+            .withColumnRenamed("total_assists", "home_total_assists") \
+            .withColumnRenamed("total_steals", "home_total_steals") \
+            .withColumnRenamed("total_blocks", "home_total_blocks") \
+            .withColumnRenamed("total_minutes", "home_total_minutes") \
+            .withColumnRenamed("fg_percentage", "home_fg_pct") \
+            .withColumnRenamed("three_pt_percentage", "home_3pt_pct")
+
+        away_stats = aggregate_player_stats(player_stats_df) \
+            .withColumnRenamed("team", "team_away") \
+            .withColumnRenamed("total_points", "away_total_points") \
+            .withColumnRenamed("total_rebounds", "away_total_rebounds") \
+            .withColumnRenamed("total_assists", "away_total_assists") \
+            .withColumnRenamed("total_steals", "away_total_steals") \
+            .withColumnRenamed("total_blocks", "away_total_blocks") \
+            .withColumnRenamed("total_minutes", "away_total_minutes") \
+            .withColumnRenamed("fg_percentage", "away_fg_pct") \
+            .withColumnRenamed("three_pt_percentage", "away_3pt_pct")
+
+        # Join all features
+        training_df = odds_df \
+            .join(home_stats, ["game_id", "team_home"], "left") \
+            .join(away_stats, ["game_id", "team_away"], "left") \
+            .join(game_results_df.select(
+                "game_id", "home_score", "away_score", "home_win"
+            ), ["game_id"], "left")
+
+        return training_df
+
+
+    def prepare_training_data(training_df):
+        """Prepare features and target variable for model training."""
+        logger.info("Preparing features for model training")
+
+        # Select feature columns
+        feature_columns = [
+            "odds_home", "odds_away", "over_under",
+            "home_total_points", "home_total_rebounds", "home_total_assists",
+            "home_total_steals", "home_total_blocks", "home_fg_pct", "home_3pt_pct",
+            "away_total_points", "away_total_rebounds", "away_total_assists",
+            "away_total_steals", "away_total_blocks", "away_fg_pct", "away_3pt_pct"
+        ]
+
+        # Filter to rows with valid target
+        training_data = training_df.filter(
+            col("home_win").isNotNull()
+        ).select(feature_columns + ["home_win", "home_score", "away_score", "game_id"])
+
+        # Drop rows with null values
+        training_data = training_data.dropna(subset=feature_columns + ["home_win"])
+
+        logger.info(f"Training data shape: {training_data.count()} rows")
+
+        return training_data
+
+
+    def train_model(training_data):
+        """Train RandomForest model for game prediction."""
+        logger.info("Training RandomForest model")
+
+        # Define feature vector
+        feature_columns = [
+            "odds_home", "odds_away", "over_under",
+            "home_total_points", "home_total_rebounds", "home_total_assists",
+            "home_total_steals", "home_total_blocks", "home_fg_pct", "home_3pt_pct",
+            "away_total_points", "away_total_rebounds", "away_total_assists",
+            "away_total_steals", "away_total_blocks", "away_fg_pct", "away_3pt_pct"
+        ]
+
+        assembler = VectorAssembler(
+            inputCols=feature_columns,
+            outputCol="features",
+            handleInvalid="skip"
+        )
+
+        # Create RandomForest model
+        rf = RandomForestRegressor(
+            featuresCol="features",
+            labelCol="home_win",
+            predictionCol="prediction",
+            maxDepth=10,
+            maxBins=32,
+            numTrees=100,
+            minInstancesPerNode=5,
+            seed=42
+        )
+
+        # Build pipeline
+        pipeline = Pipeline(stages=[assembler, rf])
+
+        # Split data for training and validation
+        train_data, val_data = training_data.randomSplit([0.8, 0.2], seed=42)
+
+        logger.info(f"Training set size: {train_data.count()}")
+        logger.info(f"Validation set size: {val_data.count()}")
+
+        # Train model
+        model = pipeline.fit(train_data)
+
+        # Evaluate on validation set
+        predictions = model.transform(val_data)
+
+        evaluator = RegressionEvaluator(
+            labelCol="home_win",
+            predictionCol="prediction",
+            metricName="rmse"
+        )
+        rmse = evaluator.evaluate(predictions)
+
+        logger.info(f"Validation RMSE: {rmse:.4f}")
+
+        # Feature importance
+        rf_model = model.stages[-1]
+        importances = rf_model.featureImportances
+
+        logger.info("Feature Importances:")
+        for name, importance in zip(feature_columns, importances):
+            logger.info(f"  {name}: {importance:.4f}")
+
+        return model, predictions
+
+
+    def save_model_to_ignite(spark, model):
+        """Save trained model to Apache Ignite for distributed inference."""
+        logger.info("Saving model to Ignite cache")
+
+        try:
+            # Create a DataFrame with model metadata
+            model_data = spark.createDataFrame([(
+                MODEL_NAME,
+                MODEL_VERSION,
+                "RandomForestRegressor",
+                str(model.stages[-1].getNumTrees),
+                current_timestamp()
+            )], ["model_name", "model_version", "model_type", "num_trees", "trained_at"])
+
+            # For now, we log the model metadata
+            logger.info(f"Model metadata: name={MODEL_NAME}, version={MODEL_VERSION}")
+
+        except Exception as e:
+            logger.warning(f"Could not save model to Ignite: {e}")
+            logger.info("Model will be saved to local storage instead")
+
+
+    def save_model_locally(spark, model, predictions):
+        """Save model and predictions to local storage."""
+        logger.info("Saving model and predictions locally")
+
+        output_path = "/opt/spark/output"
+
+        try:
+            # Save model
+            model_path = f"{output_path}/models/{MODEL_NAME}/{MODEL_VERSION}"
+            model.write().overwrite().save(model_path)
+            logger.info(f"Model saved to: {model_path}")
+
+            # Save predictions as Parquet
+            predictions_path = f"{output_path}/predictions/{MODEL_VERSION}"
+            predictions.coalesce(1).write \
+                .mode("overwrite") \
+                .parquet(predictions_path)
+            logger.info(f"Predictions saved to: {predictions_path}")
+
+            # Save model metadata
+            metadata = {
+                "model_name": MODEL_NAME,
+                "model_version": MODEL_VERSION,
+                "saved_at": datetime.now().isoformat(),
+                "spark_version": spark.version
+            }
+
+            metadata_df = spark.createDataFrame([metadata])
+            metadata_df.write \
+                .mode("overwrite") \
+                .parquet(f"{output_path}/metadata/{MODEL_VERSION}")
+            logger.info("Model metadata saved")
+
+        except Exception as e:
+            logger.error(f"Error saving model locally: {e}")
+            raise
+
+
+    def write_prediction_records(spark, predictions):
+        """Write detailed prediction records to Kafka."""
+        logger.info("Writing detailed prediction records to Kafka")
+
+        # Write to Kafka using foreachBatch
+        def write_batch(df, batch_id):
+            logger.info(f"Writing batch {batch_id} to Kafka")
+            from pyspark.sql.functions import to_json, struct
+            json_df = df.select(
+                to_json(struct(
+                    col("game_id"),
+                    col("team_home"),
+                    col("team_away"),
+                    col("prediction").alias("win_probability_home"),
+                    lit(1) - col("prediction").alias("win_probability_away"),
+                    lit(MODEL_NAME).alias("model_name"),
+                    lit(MODEL_VERSION).alias("model_version"),
+                    current_timestamp().alias("created_at")
+                )).alias("value")
+            )
+            json_df.select(
+                lit(None).cast("string").alias("key"),
+                col("value")
+            ).write \
+                .format("kafka") \
+                .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS) \
+                .option("topic", KAFKA_OUTPUT_TOPIC) \
+                .save()
+
+        query = predictions.writeStream \
+            .foreachBatch(write_batch) \
+            .outputMode("append") \
+            .option("checkpointLocation", "/tmp/spark/checkpoints/model-training-detailed") \
+            .start()
+
+        return query
+
+
+    def main():
+        """Main entry point for model training job."""
+        logger.info("=" * 60)
+        logger.info("Starting Sports Analytics Model Training Job")
+        logger.info("=" * 60)
+        logger.info(f"Model Version: {MODEL_VERSION}")
+        logger.info(f"Model Name: {MODEL_NAME}")
+
+        start_time = datetime.now()
+
+        try:
+            # Create Spark session
+            spark = create_spark_session()
+
+            # Read data from Kafka
+            logger.info("Loading data from Kafka topics...")
+            odds_df = read_kafka_batch(spark, "sports.analytics.live-odds", ODDS_SCHEMA)
+            player_stats_df = read_kafka_batch(spark, "sports.analytics.player-stats", PLAYER_STATS_SCHEMA)
+            game_results_df = read_kafka_batch(spark, "sports.analytics.game-results", GAME_RESULTS_SCHEMA)
+
+            # Log data counts
+            logger.info(f"Odds records: {odds_df.count()}")
+            logger.info(f"Player stats records: {player_stats_df.count()}")
+            logger.info(f"Game results records: {game_results_df.count()}")
+
+            # Join features
+            training_df = join_features(odds_df, player_stats_df, game_results_df)
+
+            # Prepare training data
+            training_data = prepare_training_data(training_df)
+
+            if training_data.count() == 0:
+                logger.warning("No training data available. Exiting.")
+                return
+
+            # Train model
+            model, predictions = train_model(training_data)
+
+            # Save model
+            save_model_to_ignite(spark, model)
+            save_model_locally(spark, model, predictions)
+
+            # Write predictions to Kafka
+            write_prediction_records(spark, predictions)
+
+            # Log completion
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+
+            logger.info("=" * 60)
+            logger.info("Model Training Job Completed Successfully")
+            logger.info(f"Total duration: {duration:.2f} seconds")
+            logger.info(f"Model Version: {MODEL_VERSION}")
+            logger.info("=" * 60)
+
+        except Exception as e:
+            logger.error(f"Model training job failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
+        finally:
+            if 'spark' in locals():
+                spark.stop()
+
+
+    if __name__ == "__main__":
+        main()

@@ -1,0 +1,16 @@
+# KIND cluster configuration for Sports Platform
+# This maps Kubernetes NodePorts to localhost for direct access
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: sports-platform
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Kafka external listener (NodePort 30904 -> localhost:9093)
+      - containerPort: 30904
+        hostPort: 9093
+        protocol: TCP
+      # TimescaleDB (NodePort 31543 -> localhost:15432)
+      - containerPort: 31543
+        hostPort: 15432
+        protocol: TCP

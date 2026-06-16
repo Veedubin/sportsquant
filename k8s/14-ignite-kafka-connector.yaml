@@ -1,0 +1,108 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnector
+metadata:
+  name: sports-ignite-sink
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-connect
+  annotations:
+    description: "Kafka Connect sink connector for Apache Ignite - consumes live odds, player stats, and game results"
+spec:
+  class: org.apache.ignite.stream.kafka.connect.IgniteSinkConnector
+  tasksMax: 1
+  config:
+    # Ignite connection configuration
+    # Uses TcpDiscoveryIpFinder to connect to the Ignite cluster
+    # Service endpoint: ignite-service:10800 (from 04-ignite.yaml)
+    ignite.addresses: ignite-service:10800
+
+    # Cache names for NBA data
+    # These caches must be created in Ignite before the connector runs
+    # Cache creation can be done via Ignite's REST API or configuration
+    nba.odds.cache: nba-odds-cache
+    nba.stats.cache: nba-stats-cache
+    nba.schedule.cache: nba-schedule-cache
+    nba.line.movement.cache: nba-line-movement
+
+    # Topic to cache mapping
+    # live-odds -> nba-odds-cache
+    # player-stats -> nba-stats-cache
+    # game-results -> nba-stats-cache
+    # schedule-updates -> nba-schedule-cache
+    topics: sports-analytics-live-odds,sports-analytics-player-stats,sports-analytics-game-results,sports-analytics-schedule-updates
+
+    # Format configuration
+    key.converter: org.apache.kafka.connect.storage.StringConverter
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter.schemas.enable: "false"
+
+    # Ignite-specific sink configuration
+    # Mode of operation: upsert for updating existing records
+    ignite.sink.mode: upsert
+
+    # Enable automatic cache creation if not exists
+    ignite.sink.cache.autocreate: "true"
+
+    # Cache mode: REPLICATED for read-heavy, PARTITIONED for large datasets
+    ignite.sink.cache.mode: PARTITIONED
+
+    # Number of backups for fault tolerance
+    ignite.sink.cache.backups: 1
+
+    # Batch size for writes to improve performance
+    ignite.sink.batch.size: 100
+
+    # Maximum parallel outstanding requests
+    ignite.sink.max.in.flight.requests: 10
+
+    # Timeout for cache operations (milliseconds)
+    ignite.sink.timeout: 5000
+
+    # Consistency level for the cache
+    # STRONG provides immediate consistency, EVENTUAL is faster
+    ignite.sink.consistency: EVENTUAL
+
+    # Error handling
+    errors.tolerance: all
+    errors.deadletterqueue.topic: dead-letter-ignite
+    errors.deadletterqueue.context.headers.enable: "true"
+---
+# KafkaConnector for line movement tracking
+# This connector specifically tracks odds line movements for the nba-line-movement cache
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnector
+metadata:
+  name: sports-ignite-line-movement
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-connect
+  annotations:
+    description: "Kafka Connect connector for tracking odds line movements into Ignite"
+spec:
+  class: org.apache.ignite.stream.kafka.connect.IgniteSinkConnector
+  tasksMax: 1
+  config:
+    # Ignite connection using TcpDiscoveryIpFinder
+    ignite.addresses: ignite-service:10800
+
+    # Specific topic for line movements
+    topics: sports-analytics-line-movements
+
+    # Target cache for line movements
+    nba.line.movement.cache: nba-line-movement
+
+    # Format configuration
+    key.converter: org.apache.kafka.connect.storage.StringConverter
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter.schemas.enable: "false"
+
+    # Sink configuration
+    ignite.sink.mode: upsert
+    ignite.sink.cache.autocreate: "true"
+    ignite.sink.cache.mode: PARTITIONED
+    ignite.sink.cache.backups: 1
+    ignite.sink.batch.size: 50
+
+    # Error handling
+    errors.tolerance: all
+    errors.deadletterqueue.topic: dead-letter-line-movement

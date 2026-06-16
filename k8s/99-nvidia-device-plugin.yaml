@@ -1,0 +1,269 @@
+---
+# NVIDIA Device Plugin for Kubernetes
+# Enables GPU support in Kubernetes clusters
+# Based on: https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.5/nvidia-device-plugin.yml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-system
+  labels:
+    app: nvidia-device-plugin
+    component: gpu-support
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin
+  namespace: kube-system
+  labels:
+    app: nvidia-device-plugin
+    component: gpu-support
+    version: v0.14.5
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-device-plugin
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: nvidia-device-plugin
+        component: gpu-support
+        version: v0.14.5
+      annotations:
+        monitoring.io/scrape: "true"
+        monitoring.io/port: "9445"
+        monitoring.io/path: "/metrics"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      tolerations:
+        # Tolerate GPU node NoSchedule taint
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+        # Also tolerate any NoExecute taints for flexibility
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 300
+      # Run on GPU nodes only using node selector
+      nodeSelector:
+        # This label should be present on GPU nodes
+        # Adjust or remove based on your cluster setup
+        gpu: "true"
+      serviceAccountName: nvidia-device-plugin
+      initContainers:
+        # Init container to set up GPU node labels if needed
+        - name: gpu-node-init
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.14.5
+          command: ["sh", "-c"]
+          args:
+            - |
+              # Check if node has NVIDIA GPUs and label it
+              if [ -e /usr/bin/nvidia-smi ]; then
+                echo "GPU node detected"
+              fi
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "50m"
+              memory: "64Mi"
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+      containers:
+        - image: nvcr.io/nvidia/k8s-device-plugin:v0.14.5@sha256:0ec6d77dc07d7a88dc4ec07085f37e69e3b1b5a5b5d4c7e8f1a5c6b7c8d9e0f
+          name: nvidia-device-plugin
+          imagePullPolicy: Always
+          args:
+            - --pass-device-specs
+            - --plugin-strategy=config
+            - --config-file=/etc/config/nvidia-container-toolkit/config.yaml
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: utility
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: toolkit-socket
+              mountPath: /var/run/nvidia-container-toolkit
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          ports:
+            - containerPort: 9445
+              name: metrics
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9445
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9445
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+        - name: toolkit-socket
+          hostPath:
+            path: /var/run/nvidia-container-toolkit
+        - name: config
+          configMap:
+            name: nvidia-container-toolkit-config
+        - name: tmp
+          emptyDir: {}
+---
+# ServiceAccount for the device plugin
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nvidia-device-plugin
+  namespace: kube-system
+  labels:
+    app: nvidia-device-plugin
+---
+# RBAC ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nvidia-device-plugin
+  labels:
+    app: nvidia-device-plugin
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csidrivers"]
+    verbs: ["create", "delete"]
+---
+# RBAC ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nvidia-device-plugin
+  labels:
+    app: nvidia-device-plugin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nvidia-device-plugin
+subjects:
+  - kind: ServiceAccount
+    name: nvidia-device-plugin
+    namespace: kube-system
+---
+# NetworkPolicy to restrict network access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nvidia-device-plugin
+  namespace: kube-system
+  labels:
+    app: nvidia-device-plugin
+spec:
+  podSelector:
+    matchLabels:
+      app: nvidia-device-plugin
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+        - podSelector:
+            matchLabels:
+              app: nvidia-device-plugin
+      ports:
+        - protocol: TCP
+          port: 9445
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: UDP
+          port: 53
+---
+# ConfigMap for NVIDIA Container Toolkit configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-container-toolkit-config
+  namespace: kube-system
+  labels:
+    app: nvidia-device-plugin
+data:
+  config.yaml: |
+    version: v1
+    disable-require: false
+    # Map of GPUs to container runtimes
+    # Default configuration - adjust for your cluster
+    nvidia-container-cli:
+      path: /usr/bin/nvidia-container-cli
+      environment: []
+      # Root path for NVIDIA devices
+      root: /run/nvidia
+      # Load kernel modules if needed
+      load-kmods: true
+      # Configuration for each GPU
+      devices: []
+      # Volume mount options
+      privileged: false
+      host-path: /run/nvidia

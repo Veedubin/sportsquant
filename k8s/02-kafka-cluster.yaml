@@ -1,0 +1,46 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: sports-cluster
+  namespace: default
+spec:
+  kafka:
+    version: 4.1.1
+    replicas: 1
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: external
+        port: 9094
+        type: nodeport
+        tls: false
+        nodePort: 30904
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+    livenessProbe:
+      initialDelaySeconds: 120
+      periodSeconds: 30
+      timeoutSeconds: 10
+    readinessProbe:
+      initialDelaySeconds: 120
+      periodSeconds: 15
+      timeoutSeconds: 10
+    storage:
+      type: persistent-claim
+      size: 20Gi
+      class: standard
+  zookeeper:
+    replicas: 1
+    storage:
+      type: persistent-claim
+      size: 5Gi
+      class: standard
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

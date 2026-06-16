@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nfl-calendar-generator
+  labels:
+    app: nfl-calendar-generator
+    component: ingest
+    environment: production
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: nfl-calendar-generator
+        component: ingest
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: nfl-calendar-generator
+          image: nfl-ingest:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "nfl_ingest.calendar_generator"]
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: bootstrap_servers
+            - name: LEAGUE_API_BASE_URL
+              value: "https://api.the-odds-api.com/v4"
+            - name: LEAGUE
+              value: "americanfootball_nfl"
+            - name: RATE_LIMIT_REQUESTS_PER_SECOND
+              value: "5"
+            - name: KAFKA_TOPIC_SCHEDULES
+              value: "sports-schedules"
+          envFrom:
+            - secretRef:
+                name: odds-api-credentials
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: app-config
+          configMap:
+            name: nfl-ingest-config

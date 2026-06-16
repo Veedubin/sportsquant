@@ -1,0 +1,181 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: grafana
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki:3100
+      isDefault: false
+      version: 1
+      editable: false
+    - name: Mimir
+      type: prometheus
+      access: proxy
+      url: http://mimir:8080/prometheus
+      isDefault: true
+      version: 1
+      editable: false
+    - name: Tempo
+      type: tempo
+      access: proxy
+      url: http://tempo:4318
+      isDefault: false
+      version: 1
+      editable: false
+      jsonData:
+        tracesToLogs:
+          datasourceUid: Loki
+        serviceMap:
+          datasourceUid: Mimir
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-config
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: grafana
+data:
+  dashboards.yaml: |
+    organizations:
+      - name: Main
+        folder: Dashboards
+        timezone: browser  # Allow user preference
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: grafana
+data:
+  dashboardproviders.yaml: |
+    apiVersion: 1
+    providers:
+    - name: default
+      orgId: 1
+      folder: ""
+      type: file
+      disableDeletion: false
+      editable: true
+      options:
+        path: /var/lib/grafana/dashboards
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: grafana
+data:
+  dashboard.yaml: |
+    apiVersion: 1
+    providers:
+    - name: dashboards
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 30
+      options:
+        path: /var/lib/grafana/dashboards
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: grafana
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+  selector:
+    app: sports-platform
+    component: grafana
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: grafana
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboard-storage
+              mountPath: /var/lib/grafana/dashboards
+            - name: dashboard-config
+              mountPath: /etc/grafana/conf/dashboards
+          env:
+            # Timezone configuration
+            - name: GF_DATE_FORMATS_DEFAULT_TIMEZONE
+              value: "UTC"
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+            - name: GF_AUTH_DISABLE_LOGIN_FORM
+              value: "false"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboards
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboard-storage
+          emptyDir: {}
+        - name: dashboard-config
+          configMap:
+            name: grafana-dashboard-config

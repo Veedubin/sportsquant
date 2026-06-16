@@ -1,0 +1,245 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-player-stats
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 2592000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-game-results
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 31536000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-live-odds
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-schedule-updates
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-wnba-game-results
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 31536000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-wnba-player-stats
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 2592000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+# NFL Analytics Topics
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-nfl-game-results
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 31536000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-nfl-schedule-updates
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+# NHL Analytics Topics
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-nhl-game-results
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 31536000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-nhl-schedule-updates
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+# MLB Analytics Topics
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-mlb-game-results
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 31536000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-mlb-schedule-updates
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+# F1 Analytics Topics
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-f1-race-results
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 31536000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-f1-schedule-updates
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+# Model Predictions Topic (shared across leagues)
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-model-predictions
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 12
+  replicas: 1
+  config:
+    retention.ms: 2592000000
+    cleanup.policy: delete
+    segment.bytes: 1073741824
+---
+# Model Evaluation Results Topic (shared across leagues)
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-analytics-model-evaluation
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    retention.ms: 604800000
+    cleanup.policy: delete
+    segment.bytes: 1073741824

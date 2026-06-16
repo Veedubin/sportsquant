@@ -1,0 +1,46 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnect
+metadata:
+  name: sports-connect
+  namespace: default
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  version: 4.1.1
+  replicas: 1
+  bootstrapServers: sports-cluster-kafka-bootstrap:9092
+  groupId: sports-connect-cluster
+  offsetStorageTopic: sports-connect-offsets
+  configStorageTopic: sports-connect-configs
+  statusStorageTopic: sports-connect-status
+  image: quay.io/strimzi/kafka:4.1.1-kafka-3.7.1
+  config:
+    key.converter: org.apache.kafka.connect.storage.StringConverter
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter.schemas.enable: false
+    replication.factor: 1
+    offset.storage.replication.factor: 1
+    status.storage.replication.factor: 1
+    config.storage.replication.factor: 1
+  jvmOptions:
+    -Xmx: "256m"
+    -Xms: "128m"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jdbc-driver-config
+  labels:
+    app: sports-connect
+data:
+  postgresql-42.6.0.jar: |
+    # This is a placeholder ConfigMap for the PostgreSQL JDBC driver
+    # The actual JAR should be mounted from a file or downloaded at runtime
+    # For production, build a custom image with the JDBC driver included

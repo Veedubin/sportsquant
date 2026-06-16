@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: betting-api-pdb
+  labels:
+    app: sports-platform
+    component: betting-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: betting-api

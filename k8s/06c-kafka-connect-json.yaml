@@ -1,0 +1,128 @@
+---
+# Kafka Connect with JSON support and SMT for schema generation
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sports-connect-json
+  labels:
+    app: sports-connect-json
+    component: kafka-connect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sports-connect-json
+      component: kafka-connect
+  template:
+    metadata:
+      labels:
+        app: sports-connect-json
+        component: kafka-connect
+    spec:
+      initContainers:
+        - name: install-jdbc
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              wget -q -O /jdbc-dir/kafka-connect-jdbc.jar https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.7.15/kafka-connect-jdbc-10.7.15.jar && \
+              wget -q -O /jdbc-dir/postgresql.jar https://jdbc.postgresql.org/download/postgresql-42.7.5.jar
+          volumeMounts:
+            - name: jdbc-jar
+              mountPath: /jdbc-dir
+      containers:
+        - name: kafka-connect
+          image: confluentinc/cp-kafka-connect:7.4.0
+          ports:
+            - containerPort: 8083
+              name: rest-api
+          env:
+            - name: CONNECT_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: CONNECT_GROUP_ID
+              value: "sports-connect-json"
+            - name: CONNECT_CONFIG_STORAGE_TOPIC
+              value: "sports-connect-json-configs"
+            - name: CONNECT_OFFSET_STORAGE_TOPIC
+              value: "sports-connect-json-offsets"
+            - name: CONNECT_STATUS_STORAGE_TOPIC
+              value: "sports-connect-json-status"
+            # Use JSON converter with schema generation
+            - name: CONNECT_KEY_CONVERTER
+              value: "org.apache.kafka.connect.storage.StringConverter"
+            - name: CONNECT_VALUE_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            # Allow connector to generate schemas from JSON
+            - name: CONNECT_JSON_CONVERTER_GENERATE_Schemas
+              value: "true"
+            # Disable internal schema caching
+            - name: CONNECT_JSON_CONVERTER_ENABLE_SCHEMAS_CACHING
+              value: "false"
+            - name: CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_STATUS_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_REST_ADVERTISED_HOST_NAME
+              value: "sports-connect-json"
+            - name: CONNECT_REST_PORT
+              value: "8083"
+            - name: CONNECT_HEARTBEAT_INTERVAL_MS
+              value: "2000"
+            - name: CONNECT_SESSION_TIMEOUT_MS
+              value: "30000"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms512m -Xmx1g"
+            - name: CLASSPATH
+              value: "/usr/share/confluent-hub-components/*"
+            - name: CONNECT_PLUGIN_PATH
+              value: "/usr/share/java,/usr/share/confluent-hub-components"
+          volumeMounts:
+            - name: jdbc-jar
+              mountPath: /usr/share/confluent-hub-components
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: jdbc-jar
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sports-connect-json
+  labels:
+    app: sports-connect-json
+spec:
+  ports:
+    - port: 8083
+      targetPort: 8083
+      protocol: TCP
+      name: rest-api
+  selector:
+    app: sports-connect-json
+    component: kafka-connect

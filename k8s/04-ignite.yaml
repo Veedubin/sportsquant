@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ignite
+  labels:
+    app: ignite
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ignite
+  template:
+    metadata:
+      labels:
+        app: ignite
+    spec:
+      # NodePort service for external access in development environment
+      # For production, consider ClusterIP with Ingress
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: ignite
+          image: apacheignite/ignite:2.16.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: IGNITE_QUIET
+              value: "false"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1Gi"
+              ephemeral-storage: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+              ephemeral-storage: "2Gi"
+          ports:
+            - containerPort: 10800
+            - containerPort: 47500
+            - containerPort: 47100
+            - containerPort: 8080
+          livenessProbe:
+            tcpSocket:
+              port: 10800
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 10800
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: storage
+              mountPath: /opt/ignite/apache-ignite/work
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: ignite-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ignite-service
+  annotations:
+    description: "NodePort exposure intentional for development/demo purposes"
+spec:
+  type: NodePort
+  selector:
+    app: ignite
+  ports:
+    - name: client
+      port: 10800
+      targetPort: 10800
+      nodePort: 30800
+    - name: rest
+      port: 8080
+      targetPort: 8080

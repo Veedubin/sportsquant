@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mlb-ingest-config
+  namespace: default
+  labels:
+    app: sports-platform
+    component: league-ingest
+    league: mlb
+data:
+  LEAGUE_API_BASE_URL: "https://api.the-odds-api.com/v4/sports/baseball_mlb"
+  POLL_INTERVAL_SECONDS: "60"
+  RATE_LIMIT_REQUESTS_PER_MINUTE: "50"
+  LEAGUE_CODE: "MLB"
+  KAFKA_BOOTSTRAP_SERVERS: "sports-cluster-kafka-bootstrap.default.svc.cluster.local:9092"
+  KAFKA_TOPIC: "mlb-games"
+  SCHEDULE_TOPIC: "sports-schedules"
+  DB_HOST: "timescaledb.default.svc"
+  DB_PORT: "5432"
+  DB_NAME: "sports_analytics"
+  DB_USER: "postgres"
+  DB_PASSWORD: "password"
+  DB_BUFFER_MAX_SIZE: "500"
+  DB_BATCH_SIZE: "100"
+  DB_FLUSH_INTERVAL: "5"
+  SEASON_START_MONTH: "3"
+  SEASON_END_MONTH: "10"

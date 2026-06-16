@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wnba-ingest-config
+  namespace: default
+  labels:
+    app: sports-platform
+    component: league-ingest
+    league: wnba
+data:
+  LEAGUE_API_BASE_URL: "https://api.the-odds-api.com/v4/sports/basketball_wnba"
+  POLL_INTERVAL_SECONDS: "30"
+  RATE_LIMIT_REQUESTS_PER_MINUTE: "100"
+  LEAGUE_CODE: "WNBA"
+  KAFKA_BOOTSTRAP_SERVERS: "sports-cluster-kafka-bootstrap.default.svc.cluster.local:9092"
+  KAFKA_TOPIC: "wnba-odds"
+  SCHEDULE_TOPIC: "sports-schedules"

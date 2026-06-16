@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-ignite3-player-aggregation
+  labels:
+    app: sports-platform
+    component: spark
+    job: ignite3-analytics
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  template:
+    spec:
+      containers:
+        - name: spark-rapids
+          image: nvidia/spark-rapids:24.04.0
+          command: ["/opt/spark/bin/spark-submit"]
+          args:
+            - "--master"
+            - "spark://spark-master:7077"
+            - "--class"
+            - "src.spark.ignite3_job"
+            - "local:///app/assemblies/spark-analytics.jar"
+          env:
+            - name: SPARK_CONF_DIR
+              value: "/opt/spark/conf"
+            - name: PYSPARK_PYTHON
+              value: "/usr/bin/python3"
+          volumeMounts:
+            - name: spark-config
+              mountPath: "/opt/spark/conf"
+              readOnly: true
+            - name: app-code
+              mountPath: "/app"
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "4Gi"
+              nvidia.com/gpu: 1
+            limits:
+              cpu: "4000m"
+              memory: "16Gi"
+              nvidia.com/gpu: 1
+      volumes:
+        - name: spark-config
+          configMap:
+            name: spark-ignite3-config
+        - name: app-code
+          emptyDir: {}
+      restartPolicy: Never

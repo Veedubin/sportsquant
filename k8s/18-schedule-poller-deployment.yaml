@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schedule-poller
+  labels:
+    app: schedule-poller
+    component: data-ingestion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: schedule-poller
+  template:
+    metadata:
+      labels:
+        app: schedule-poller
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: schedule-poller
+          image: nba-ingest:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "nba_ingest.schedule_poller"]
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: "sports-cluster-kafka-bootstrap:9092"
+            - name: KAFKA_TOPIC_SCHEDULE
+              value: "sports-analytics-schedule-updates"
+            - name: KAFKA_TOPIC_GAMES
+              value: "sports-analytics-game-results"
+            - name: TIMESCALE_DB_HOST
+              value: "localhost"
+            - name: TIMESCALE_DB_PORT
+              value: "5432"
+            - name: TIMESCALE_DB_NAME
+              value: "sports_analytics"
+            - name: TIMESCALE_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: timescaledb-credentials
+                  key: username
+                  optional: true
+            - name: TIMESCALE_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timescaledb-credentials
+                  key: password
+                  optional: true
+            - name: SCHEDULE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: schedule-api-credentials
+                  key: api-key
+                  optional: true
+            - name: SCHEDULE_API_URL
+              value: "https://api.schedule-provider.com/v1"
+            - name: POLL_INTERVAL_SECONDS
+              value: "300"
+            - name: BATCH_SIZE
+              value: "25"
+            - name: IGNITE_HOST
+              value: "ignite-service"
+            - name: IGNITE_PORT
+              value: "10800"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+              ephemeral-storage: "500Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+              ephemeral-storage: "1Gi"
+          ports:
+            - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

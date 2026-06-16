@@ -1,0 +1,210 @@
+# Unified Poller - Single Container, All Leagues
+# CDMA-Style coordinated polling for NBA, NFL, NHL, MLB, F1
+# No AGENT_TYPE needed - polls all configured leagues
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unified-poller
+  labels:
+    app: sports-platform
+    component: poller
+    architecture: unified
+spec:
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: poller
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: poller
+        timezone: utc
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: unified-poller
+          image: sports-platform/poller:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            # Configuration
+            - name: CONFIG_SERVER_URL
+              value: "http://scheduler-config-server:8081"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "sports-cluster-kafka-bootstrap:9092"
+
+            # Rate limiting
+            - name: RATE_LIMIT_TOTAL_PER_MINUTE
+              value: "60"
+            - name: MAX_CONCURRENT_REQUESTS
+              value: "10"
+
+            # Logging
+            - name: LOG_LEVEL
+              value: "INFO"
+
+            # Timezone (UTC)
+            - name: TZ
+              value: "UTC"
+
+            # TimescaleDB (dual-write)
+            - name: TIMESCALEDB_HOST
+              value: "timescaledb.default.svc"
+            - name: TIMESCALEDB_PORT
+              value: "5432"
+            - name: TIMESCALEDB_USER
+              value: "postgres"
+            - name: TIMESCALEDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timescaledb-credentials
+                  key: password
+                  optional: true
+            - name: TIMESCALEDB_DATABASE
+              value: "sports_analytics"
+
+            # ODDS API (optional - only if odds polling enabled)
+            - name: ODDS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: odds-api-credentials
+                  key: api_key
+                  optional: true
+
+            # OpenTelemetry
+            - name: OTEL_SERVICE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.monitoring:4317"
+            - name: OTEL_ENVIRONMENT
+              value: "production"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+
+          # Conservative resource limits (512Mi-4Gi as requested)
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+
+          ports:
+            - containerPort: 8000
+              name: metrics
+
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 180
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 30
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: run
+              mountPath: /run
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
+---
+# Service for the unified poller
+apiVersion: v1
+kind: Service
+metadata:
+  name: unified-poller
+  labels:
+    app: sports-platform
+    component: poller
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+      name: metrics
+  selector:
+    app: sports-platform
+    component: poller
+---
+# HorizontalPodAutoscaler for scaling based on metrics
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: unified-poller
+  labels:
+    app: sports-platform
+    component: poller
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: unified-poller
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

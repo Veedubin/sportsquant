@@ -1,0 +1,16 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports.smoke.test.users
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+# Topic must be in same namespace as Kafka cluster (default)
+# Strimzi operator watches this namespace for KafkaTopic resources
+spec:
+  partitions: 1
+  replicas: 1
+  config:
+    retention.ms: 86400000
+    cleanup.policy: delete
+    segment.bytes: 1073741824

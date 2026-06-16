@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-engineering-run
+  labels:
+    app: sports-platform
+    component: feature-engineering
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: feature-engineering
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: feature-engineering
+    spec:
+      containers:
+        - name: feature-engineering
+          image: sports-platform/poller:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Feature engineering service ready (waiting for trigger)..."
+              # Wait indefinitely for manual trigger via exec or signal
+              # To trigger: kubectl exec -it feature-engineering-run-xxx -- python -m cli.generate_report
+              while true; do sleep 3600; done
+          env:
+            - name: PYTHONPATH
+              value: "/home/poller/src"
+            - name: OTEL_SERVICE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.monitoring:4317"
+            - name: OTEL_ENVIRONMENT
+              value: "production"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
+          envFrom:
+            - configMapRef:
+                name: nba-ingest-config
+            - secretRef:
+                name: nba-api-credentials
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "2Gi"
+          readinessProbe:
+            exec:
+              command: ["echo", "ready"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: feature-engineering-run
+  labels:
+    app: sports-platform
+    component: feature-engineering
+spec:
+  selector:
+    app: sports-platform
+    component: feature-engineering
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP

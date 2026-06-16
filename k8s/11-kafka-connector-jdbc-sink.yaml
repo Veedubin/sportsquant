@@ -1,0 +1,36 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnector
+metadata:
+  name: sports-jdbc-sink
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-connect
+spec:
+  class: io.confluent.connect.jdbc.JdbcSinkConnector
+  tasksMax: 1
+  config:
+    connection.url: jdbc:postgresql://timescaledb:5432/sports_analytics
+    connection.user: postgres
+    connection.password: password
+    topics: sports-analytics-live-odds
+    table.name.format: odds_events
+    # NOTE: The Confluent JDBC Connector requires Avro/Struct format
+    # Python producers send schemaless JSON which results in HashMap with null schema
+    # This causes: "requires records with a non-null Struct value and non-null Struct schema"
+    #
+    # FIX OPTIONS:
+    # 1. Use Debezium Server (supports JSON natively) - RECOMMENDED
+    # 2. Use SMT to add schema to JSON records
+    # 3. Switch producers to Avro format with Schema Registry
+    # 4. Use direct database writes (bypass Kafka Connect)
+    key.converter: org.apache.kafka.connect.storage.StringConverter
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter.schemas.enable: "false"
+    # Using SMT to handle JSON records
+    transforms: flatten
+    transforms.flatten.type: org.apache.kafka.connect.transforms.Flatten$Value
+    transforms.flatten.delimiter: _
+    fields.whitelist: game_id,sport_key,event_id,commence_time,home_team,away_team,market,outcome_name,outcome_price,outcome_point,bookmaker,last_update,timestamp,poll_date
+    insert.mode: upsert
+    pk.mode: none
+    errors.tolerance: all

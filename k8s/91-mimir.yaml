@@ -1,0 +1,143 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mimir-config
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: mimir
+data:
+  mimir.yaml: |
+    # Minimal Mimir configuration for Grafana OSS stack
+    # Compatible with grafana/mimir:latest
+
+    server:
+      http_listen_port: 8080
+      grpc_listen_port: 9095
+
+    target: all
+
+    blocks_storage:
+      backend: filesystem
+
+    memberlist:
+      join_members:
+        - mimir-memberlist
+
+    usage_stats:
+      enabled: false
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mimir
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: mimir
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+  selector:
+    app: sports-platform
+    component: mimir
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mimir
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: mimir
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sports-platform
+      component: mimir
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: sports-platform
+        component: mimir
+    spec:
+      containers:
+        - name: mimir
+          image: grafana/mimir:latest
+          args:
+            - -target=all
+            - -config.file=/etc/mimir/mimir.yaml
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: grpc
+              containerPort: 9095
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/mimir
+            - name: storage
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: mimir-config
+        - name: storage
+          persistentVolumeClaim:
+            claimName: mimir-storage
+        - name: tmp
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mimir-storage
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: mimir
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mimir-memberlist
+  namespace: monitoring
+  labels:
+    app: sports-platform
+    component: mimir
+spec:
+  type: ClusterIP
+  ports:
+    - name: memberlist
+      port: 7946
+      targetPort: 7946
+  selector:
+    app: sports-platform
+    component: mimir

@@ -1,0 +1,104 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nba-players
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nba-player-logs
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nba-games
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nba-schedule
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    cleanup.policy: compact
+    retention.ms: 604800000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nba-teams
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 1
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 31536000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nba-team-boxscores
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 6
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: nba-dunk-scores
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 1
+  replicas: 1
+  config:
+    cleanup.policy: delete
+    retention.ms: 2592000000
+    segment.bytes: 1073741824

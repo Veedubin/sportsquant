@@ -1,0 +1,175 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-ml-training-config
+  labels:
+    app: spark-ml-training
+    environment: production
+data:
+  spark-conf.yaml: |
+    # Spark RAPIDS Configuration for GPU-Accelerated ML Training
+    spark.app.name: "sports-platform-ml-training"
+    spark.master: "k8s://https://kubernetes.default.svc:443"
+    spark.submit.deployMode: "cluster"
+    spark.kubernetes.namespace: "spark"
+    spark.kubernetes.authenticate.driver.serviceAccountName: "spark-sa"
+
+    # Spark RAPIDS Plugin Configuration
+    spark.plugins: "com.nvidia.spark.SQLPlugin"
+    spark.rapids.sql.enabled: "true"
+    spark.rapids.sql.shuffle.spill: "true"
+    spark.rapids.sql.explain: "NOTICE"
+
+    # GPU Configuration
+    spark.task.resource.gpu.amount: "1"
+    spark.rapids.sql.concurrentGpuTasks: "2"
+    spark.rapids.memory.gpu.minAllocFraction: "0.1"
+    spark.rapids.memory.gpu.maxAllocFraction: "0.9"
+    spark.rapids.memory.gpu.reservePercent: "10"
+
+    # XGBoost4J-Spark GPU Configuration
+    spark.xgboost.spark_gpu.enabled: "true"
+    spark.xgboost.training_world_size: "${SPARK_EXECUTOR_INSTANCES}"
+
+    # Kafka Configuration
+    kafka.bootstrap.servers: "sports-cluster-kafka-bootstrap:9092"
+    kafka.topic.odds: "sports-analytics-odds"
+    kafka.topic.player-stats: "sports-analytics-player-stats"
+
+    # MLflow Configuration
+    mlflow.tracking.uri: "http://mlflow-service:5000"
+    mlflow.experiment.name: "/sports-platform/point-predictions"
+    mlflow.model.registry.uri: "http://mlflow-service:5000"
+
+    # Ignite Configuration
+    ignite.peer.class.loading.disabled: "false"
+    ignite.peer.class.loading.localClassPathPrefix: "/opt/ignite/libs/"
+
+    # Spark SQL Configuration for Performance
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+    spark.sql.adaptive.skewJoin.enabled: "true"
+    spark.sql.shuffle.partitions: "200"
+    spark.sql.autoBroadcastJoinThreshold: "10MB"
+
+    # Memory Configuration
+    spark.driver.memory: "8g"
+    spark.driver.maxResultSize: "4g"
+    spark.executor.memory: "16g"
+    spark.executor.memoryOverhead: "4g"
+    spark.python.worker.reuse: "true"
+
+    # Container Configuration
+    spark.kubernetes.container.image: "709825985650.dkr.ecr.us-east-1.amazonaws.com/spark-rapids/spark:3.5.0-cuda12-x86_64"
+    spark.kubernetes.container.image.pullPolicy: "Always"
+    spark.kubernetes.container.image.pullSecrets: "ecr-secret"
+
+    # Logging
+    spark.log.level: "INFO"
+    spark.logConfs: "true"
+
+  training-config.yaml: |
+    # ML Model Training Configuration
+    model:
+      name: "points_prediction_xgboost"
+      version: "1.0.0"
+      target_column: "actual_points"
+      features:
+        pra_features:
+          - "player_points_avg"
+          - "player_rebounds_avg"
+          - "player_assists_avg"
+          - "pra_avg"
+          - "pra_std"
+          - "pra_trend_5"
+          - "pra_trend_10"
+          - "home_away_pra_diff"
+        raptor_features:
+          - "raptor_offense"
+          - "raptor_defense"
+          - "raptor_total"
+          - "raptor_box"
+          - "raptor_onoff"
+        opponent_features:
+          - "opp_def_rating"
+          - "opp_pace"
+          - "opp_points_allowed"
+        game_features:
+          - "is_home"
+          - "days_rest"
+          - "背靠背"
+          - "game_month"
+
+    xgboost:
+      objective: "reg:squarederror"
+      eval_metric: "rmse"
+      num_boost_round: 500
+      early_stopping_rounds: 50
+      n_estimators: 400
+      learning_rate: 0.05
+      max_depth: 6
+      min_child_weight: 3
+      subsample: 0.8
+      colsample_bytree: 0.8
+      reg_alpha: 0.1
+      reg_lambda: 1.0
+      random_state: 42
+
+    training:
+      train_split: 0.8
+      test_split: 0.2
+      validation_split: 0.15
+      min_samples: 100
+      feature_threshold: 0.01
+
+    mlflow:
+      artifact_path: "models/point_predictions"
+      registered_model_name: "sports-platform-points-xgboost"
+      flavor: "xgboost"
+
+    ignite:
+      cache_name: "xgboost_models"
+      model_key: "points_prediction_latest"
+      binary_format: "json"
+
+  feature-engineering.yaml: |
+    # Feature Engineering Configuration
+    pra_features:
+      window_sizes: [5, 10, 20]
+      aggregations: ["mean", "std", "min", "max", "sum"]
+      include_home_away: true
+      include_back_to_back: true
+
+    raptor_features:
+      decay_weights: [0.5, 0.3, 0.2]
+      include_box: true
+      include_onoff: true
+
+    rolling_features:
+      default_window: 10
+      min_periods: 3
+
+    lag_features:
+      max_lag: 5
+
+    target_encoding:
+      smoothing_factor: 10
+      min_samples: 20
+
+  kafka-topics.yaml: |
+    # Kafka Topic Configuration
+    topics:
+      - name: "sports-analytics-odds"
+        consumer_group: "spark-ml-training-odds"
+        auto_offset_reset: "earliest"
+        enable_auto_commit: true
+        max_poll_records: 500
+      
+      - name: "sports-analytics-player-stats"
+        consumer_group: "spark-ml-training-stats"
+        auto_offset_reset: "earliest"
+        enable_auto_commit: true
+        max_poll_records: 500
+
+    data_format: "json"
+    schema_registry_url: "http://schema-registry:8081"

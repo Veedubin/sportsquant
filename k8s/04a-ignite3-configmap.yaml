@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ignite3-config
+  labels:
+    app: ignite3
+data:
+  ignite.yaml: |
+    # Ignite 3.x Configuration
+    version: "1.0.0"
+
+    # Node Configuration
+    nodes:
+      - host: "0.0.0.0"
+        ports:
+          - port: 10800
+            type: client
+          - port: 33400
+            type: rest
+          - port: 51800
+            type: discovery
+
+    # Data Storage Configuration
+    storage:
+      data:
+        path: "/opt/ignite3/data"
+        checkpointFrequency: 180000
+      wal:
+        path: "/opt/ignite3/wal"
+        checkpointFrequency: 180000
+
+    # Memory Configuration
+    memory:
+      size: "4GiB"
+
+    # REST Configuration
+    rest:
+      enabled: true
+      port: 33400
+
+    # Logging Configuration
+    logging:
+      level: "INFO"
+
+  init.sql: |
+    -- Initialize NBA data structures in Ignite 3
+
+    -- Create NBA players table
+    CREATE TABLE IF NOT EXISTS nba_players (
+        player_id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(128),
+        team_id VARCHAR(32),
+        position VARCHAR(32),
+        height VARCHAR(16),
+        weight VARCHAR(16),
+        from_year INTEGER,
+        to_year INTEGER,
+        draft_year INTEGER,
+        draft_number INTEGER,
+        metadata JSON
+    ) WITH (
+        'template' = 'partitioned',
+        'backups' = 1,
+        'affinityKey' = 'player_id'
+    );
+
+    -- Create NBA games table
+    CREATE TABLE IF NOT EXISTS nba_games (
+        game_id VARCHAR(64) PRIMARY KEY,
+        game_time TIMESTAMP,
+        home_team VARCHAR(32),
+        away_team VARCHAR(32),
+        home_score INTEGER,
+        away_score INTEGER,
+        status VARCHAR(32),
+        season VARCHAR(16),
+        metadata JSON
+    ) WITH (
+        'template' = 'partitioned',
+        'backups' = 1
+    );
+
+    -- Create NBA schedule table
+    CREATE TABLE IF NOT EXISTS nba_schedule (
+        game_id VARCHAR(64) PRIMARY KEY,
+        date DATE,
+        home_team VARCHAR(32),
+        away_team VARCHAR(32),
+        game_time TIMESTAMP,
+        season VARCHAR(16),
+        metadata JSON
+    ) WITH (
+        'template' = 'partitioned',
+        'backups' = 1
+    );
+
+    -- Create NBA player stats table
+    CREATE TABLE IF NOT EXISTS nba_player_stats (
+        game_log_id VARCHAR(64) PRIMARY KEY,
+        player_id VARCHAR(64),
+        game_id VARCHAR(64),
+        season VARCHAR(16),
+        points INTEGER,
+        rebounds INTEGER,
+        assists INTEGER,
+        steals INTEGER,
+        blocks INTEGER,
+        minutes INTEGER,
+        field_goals_made INTEGER,
+        field_goals_attempted INTEGER,
+        three_pointers_made INTEGER,
+        three_pointers_attempted INTEGER,
+        free_throws_made INTEGER,
+        free_throws_attempted INTEGER,
+        turnovers INTEGER,
+        personal_fouls INTEGER,
+        plus_minus INTEGER,
+        metadata JSON
+    ) WITH (
+        'template' = 'partitioned',
+        'backups' = 1,
+        'affinityKey' = 'player_id'
+    );
+
+    -- Create indexes for common queries
+    CREATE INDEX IF NOT EXISTS idx_nba_games_season ON nba_games(season);
+    CREATE INDEX IF NOT EXISTS idx_nba_schedule_date ON nba_schedule(date);
+    CREATE INDEX IF NOT EXISTS idx_nba_stats_player ON nba_player_stats(player_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_stats_game ON nba_player_stats(game_id);
+    CREATE INDEX IF NOT EXISTS idx_nba_stats_season ON nba_player_stats(season);

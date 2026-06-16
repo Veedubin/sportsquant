@@ -1,0 +1,14 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: sports-schedules
+  namespace: default
+  labels:
+    strimzi.io/cluster: sports-cluster
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    cleanup.policy: compact
+    retention.ms: 604800000
+    segment.bytes: 1073741824
