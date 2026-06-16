@@ -1,11 +1,9 @@
 """Tests for EV calculator (new)."""
 
 import pytest
-from decimal import Decimal
 
 from sportsquant.models.analysis.ev_calculator import (
     EVCalculator,
-    EVResult,
     calculate_kelly_stake,
     calculate_breakeven_probability,
 )

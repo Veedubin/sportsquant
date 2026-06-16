@@ -4,8 +4,6 @@ Note: sportsquant.api.auth module is not yet implemented.
 This test file is a template ready for when the auth module is added.
 """
 
-import os
-from pathlib import Path
 
 import pytest
 

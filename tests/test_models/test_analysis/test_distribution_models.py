@@ -1,8 +1,6 @@
 """Tests for distribution models (migrated from sports-bet)."""
 
-import numpy as np
 import pytest
-from scipy.stats import kstest
 
 from sportsquant.models.analysis.distribution_models import (
     DistributionSelector,

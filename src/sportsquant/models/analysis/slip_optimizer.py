@@ -23,8 +23,8 @@ Math:
   X = Z @ L.T
 """
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -35,6 +35,57 @@ from .rules import (
     validate_same_team_restriction,
     calculate_effective_payout as rules_calculate_effective_payout,
 )
+
+
+@dataclass
+class SlipConfig:
+    """Configuration for slip optimization."""
+
+    max_legs: int = 6
+    min_ev: float = 0.05
+    max_correlation: float = 0.7
+
+
+@dataclass
+class SlipEntry:
+    """A single entry in a slip."""
+
+    player_name: str
+    stat_type: str
+    line: float
+    side: str
+    odds: float
+    ev: float
+    probability: float
+
+
+@dataclass
+class OptimizedSlip:
+    """Result of slip optimization."""
+
+    entries: list[SlipEntry] = field(default_factory=list)
+    total_ev: float = 0.0
+    total_odds: float = 0.0
+    combined_probability: float = 0.0
+
+
+def optimize_slip(entries: list[dict[str, Any]]) -> OptimizedSlip:
+    """Optimize a slip from dict entries."""
+    slip_entries = []
+    for e in entries:
+        slip_entries.append(
+            SlipEntry(
+                player_name=e["player_name"],
+                stat_type=e["stat_type"],
+                line=e["line"],
+                side=e["side"],
+                odds=e["odds"],
+                ev=e["ev"],
+                probability=e["probability"],
+            )
+        )
+    optimizer = SlipOptimizer()
+    return optimizer.optimize(slip_entries)
 
 
 # PrizePicks payout structures (multiplier = total return)
@@ -176,6 +227,7 @@ class SlipOptimizer:
         payout_flex: Optional[dict] = None,
         pool_cap: Optional[dict] = None,
         max_combos: Optional[dict] = None,
+        config: Optional[SlipConfig] = None,
     ):
         """Initialize SlipOptimizer.
 
@@ -186,6 +238,7 @@ class SlipOptimizer:
             payout_flex: FLEX payout structure
             pool_cap: Pool size caps per leg count
             max_combos: Max combinations to sample per leg count
+            config: SlipConfig for optimization parameters
         """
         self.n_sims = n_sims
         self.seed = seed
@@ -193,6 +246,51 @@ class SlipOptimizer:
         self.payout_flex = payout_flex or PAYOUT_FLEX
         self.pool_cap = pool_cap or POOL_CAP
         self.max_combos = max_combos or MAX_COMBOS
+        self.config = config or SlipConfig()
+
+    def optimize(self, entries: list[SlipEntry]) -> OptimizedSlip:
+        """Optimize a list of slip entries.
+
+        Filters by min_ev, respects max_legs, ranks by EV descending.
+
+        Args:
+            entries: List of SlipEntry objects
+
+        Returns:
+            OptimizedSlip with filtered and ranked entries
+        """
+        # Filter by min EV
+        filtered = [e for e in entries if e.ev >= self.config.min_ev]
+
+        # Sort by EV descending
+        filtered.sort(key=lambda e: e.ev, reverse=True)
+
+        # Respect max legs
+        filtered = filtered[: self.config.max_legs]
+
+        # Calculate combined metrics
+        if not filtered:
+            return OptimizedSlip(entries=[], total_ev=0.0, total_odds=0.0, combined_probability=0.0)
+
+        total_ev = sum(e.ev for e in filtered)
+        combined_prob = 1.0
+        for e in filtered:
+            combined_prob *= e.probability
+
+        # Calculate parlay odds
+        total_odds = 1.0
+        for e in filtered:
+            if e.odds < 0:
+                total_odds *= 1 + 100 / abs(e.odds)
+            else:
+                total_odds *= 1 + e.odds / 100
+
+        return OptimizedSlip(
+            entries=filtered,
+            total_ev=total_ev,
+            total_odds=total_odds,
+            combined_probability=combined_prob,
+        )
 
     def _corr_bucket(self, a: Leg, b: Leg) -> float:
         """Calculate correlation coefficient between two legs.

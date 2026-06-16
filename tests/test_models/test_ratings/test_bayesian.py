@@ -1,7 +1,6 @@
 """Tests for Bayesian priors (new)."""
 
 import pytest
-import numpy as np
 
 from sportsquant.models.ratings.bayesian_priors import (
     BayesianPriorCalculator,

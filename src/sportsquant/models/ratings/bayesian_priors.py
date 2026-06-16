@@ -21,10 +21,97 @@ Usage:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 
 StatType = Literal["pts", "reb", "ast", "pra", "stl", "blk", "to", "fg_pct", "3pt_pct", "ft_pct"]
+
+
+@dataclass(frozen=True)
+class PriorConfig:
+    """Configuration for Bayesian priors."""
+
+    alpha_prior: float = 2.0
+    beta_prior: float = 2.0
+    prior_weight: float = 10.0
+
+
+def beta_binomial_posterior(
+    alpha_prior: float,
+    beta_prior: float,
+    successes: int,
+    failures: int,
+) -> tuple[float, float]:
+    """Compute beta-binomial posterior parameters."""
+    return (alpha_prior + successes, beta_prior + failures)
+
+
+def compute_posterior(
+    prior_mean: float,
+    prior_weight: float,
+    observed_mean: float,
+    observed_weight: float,
+) -> float:
+    """Compute posterior as weighted average of prior and observed."""
+    total_weight = prior_weight + observed_weight
+    if total_weight == 0:
+        return 0.0
+    return (prior_mean * prior_weight + observed_mean * observed_weight) / total_weight
+
+
+class BayesianPriorCalculator:
+    """Bayesian prior calculator for player projections.
+
+    Calculates player priors using Bayesian shrinkage toward league averages.
+    """
+
+    def __init__(self, config: Optional[PriorConfig] = None):
+        """Initialize calculator with optional config."""
+        self.config = config or PriorConfig()
+        self._league_avg = 0.5
+
+    def calculate_player_prior(
+        self,
+        player_name: str,
+        n_games: int,
+        historical_hit_rate: float,
+    ) -> float:
+        """Calculate prior for a player using Bayesian shrinkage.
+
+        Args:
+            player_name: Player name (unused, for API compatibility)
+            n_games: Number of games in sample
+            historical_hit_rate: Observed hit rate
+
+        Returns:
+            Shrunken prior probability
+        """
+        shrinkage = self.shrinkage_factor(n=n_games, prior_weight=self.config.prior_weight)
+        return shrinkage * self._league_avg + (1 - shrinkage) * historical_hit_rate
+
+    def calculate_league_prior(self, player_rates: list[float]) -> float:
+        """Calculate league-wide prior from player rates."""
+        if not player_rates:
+            return self._league_avg
+        return sum(player_rates) / len(player_rates)
+
+    def calculate_position_prior(self, position: str, player_rates: list[float]) -> float:
+        """Calculate position-specific prior."""
+        return self.calculate_league_prior(player_rates)
+
+    def shrinkage_factor(self, n: int, prior_weight: float) -> float:
+        """Calculate shrinkage factor toward prior.
+
+        Args:
+            n: Number of observations
+            prior_weight: Weight of the prior
+
+        Returns:
+            Shrinkage factor (0 to 1, higher = more shrinkage)
+        """
+        if n <= 0:
+            return 1.0
+        return prior_weight / (prior_weight + n)
 
 
 @dataclass(frozen=True)

@@ -30,6 +30,11 @@ DEFAULT_PROBABILITY: Final[float] = 0.5
 
 __all__ = [
     "BetDecision",
+    "BetResult",
+    "BettingEngine",
+    "calculate_ev",
+    "detect_arbitrage",
+    "american_to_decimal",
     "expected_value",
     "kelly_fraction",
     "decide_over_under",
@@ -63,25 +68,63 @@ def _value_bet(true_prob: float, decimal_odds: float) -> float:
     return float(true_prob - implied)
 
 
-@dataclass(frozen=True)
+@dataclass
 class BetDecision:
     """Represents a bet decision with all relevant metrics.
 
     Attributes:
-        side: 'over' or 'under'
+        side: 'over' or 'under' (or 'OVER'/'UNDER')
         line: The betting line (e.g., 10.5)
         p_win: Estimated probability of winning
         decimal_odds: Decimal odds (e.g., 1.91)
         ev: Expected value per $1 staked
         kelly_fraction: Recommended Kelly fraction (0-1)
+        player_name: Optional player name for player-prop decisions
+        stat_type: Optional stat type (e.g., "Points")
+        odds: American odds (e.g., -110 or +150)
+        stake: Recommended stake in currency units
+        confidence: Confidence score (0-1)
     """
 
     side: str  # "over" or "under"
     line: float
-    p_win: float
-    decimal_odds: float
-    ev: float
-    kelly_fraction: float
+    p_win: float = 0.5
+    decimal_odds: float = 1.0
+    ev: float = 0.0
+    kelly_fraction: float = 0.0
+    player_name: str = ""
+    stat_type: str = ""
+    odds: float = 0.0
+    stake: float = 0.0
+    confidence: float = 0.0
+
+    @property
+    def expected_profit(self) -> float:
+        """Expected profit = stake * ev.
+
+        When stake is 0 but ev is non-zero, returns ev (per-$1 EV) so that
+        the sign of expected_profit reflects the direction of the edge.
+        """
+        if self.stake == 0.0 and self.ev != 0.0:
+            return self.ev
+        result = self.stake * self.ev
+        return 0.0 if result == 0.0 else result
+
+    def to_dict(self) -> dict:
+        """Serialize to dictionary."""
+        return {
+            "side": self.side,
+            "line": self.line,
+            "p_win": self.p_win,
+            "decimal_odds": self.decimal_odds,
+            "ev": self.ev,
+            "kelly_fraction": self.kelly_fraction,
+            "player_name": self.player_name,
+            "stat_type": self.stat_type,
+            "odds": self.odds,
+            "stake": self.stake,
+            "confidence": self.confidence,
+        }
 
 
 def expected_value(_p: float, odds: Odds, true_prob: float) -> float:
@@ -212,3 +255,107 @@ def record_kelly_recommendation(market: str, kelly_type: str) -> None:
         market=market,
         kelly_type=kelly_type,
     ).inc()
+
+
+# ---------------------------------------------------------------------------
+# New public API — BetResult, BettingEngine, calculate_ev, detect_arbitrage,
+# american_to_decimal
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BetResult:
+    """Result of a settled bet."""
+
+    decision: BetDecision
+    outcome: str  # "win", "loss", "push"
+    actual_stat: float
+    profit: float
+
+
+def american_to_decimal(american: int | float) -> float:
+    """Convert American odds to decimal odds.
+
+    Positive American odds (e.g., +150): decimal = 1 + american/100
+    Negative American odds (e.g., -110): decimal = 1 + 100/abs(american)
+    """
+    if american > 0:
+        return 1.0 + american / 100.0
+    if american < 0:
+        return 1.0 + 100.0 / abs(american)
+    return 2.0  # +100 even odds
+
+
+def calculate_ev(*, probability: float, odds: int | float) -> float:
+    """Calculate expected value from win probability and American odds.
+
+    EV = probability * decimal_odds - 1.0
+
+    Args:
+        probability: Win probability (0-1)
+        odds: American odds (e.g., -110, +150) or decimal odds (e.g., 2.0)
+
+    Returns:
+        Expected value per $1 staked
+    """
+    if isinstance(odds, float) and odds > 1.5 and odds < 50:
+        # Treat as decimal odds if it looks like decimal odds
+        decimal = odds
+    else:
+        decimal = american_to_decimal(odds)
+    return probability * decimal - 1.0
+
+
+def detect_arbitrage(
+    *, odds_over: int | float, odds_under: int | float, total_stake: float = 0.0
+) -> dict | None:
+    """Detect arbitrage opportunity between over and under American odds.
+
+    Args:
+        odds_over: American odds for over side
+        odds_under: American odds for under side
+        total_stake: Optional total stake for stake allocation
+
+    Returns:
+        Dict with 'arb_percent', 'stake_over', 'stake_under' if arb exists,
+        or None / dict with arb_percent <= 0 if no arbitrage.
+    """
+    dec_over = american_to_decimal(odds_over)
+    dec_under = american_to_decimal(odds_under)
+
+    implied_over = 1.0 / dec_over
+    implied_under = 1.0 / dec_under
+    implied_total = implied_over + implied_under
+
+    arb_percent = (1.0 - implied_total) * 100.0
+
+    if arb_percent <= 0:
+        return {"arb_percent": arb_percent, "stake_over": 0.0, "stake_under": 0.0}
+
+    result: dict = {"arb_percent": arb_percent}
+
+    if total_stake > 0:
+        stake_over = total_stake * implied_over / implied_total
+        stake_under = total_stake * implied_under / implied_total
+        result["stake_over"] = stake_over
+        result["stake_under"] = stake_under
+    else:
+        result["stake_over"] = 0.0
+        result["stake_under"] = 0.0
+
+    return result
+
+
+class BettingEngine:
+    """Simple betting engine for EV calculation and arbitrage detection."""
+
+    @staticmethod
+    def calculate_ev(prob: float, odds: int) -> float:
+        """Calculate EV from probability and American odds."""
+        dec = american_to_decimal(odds)
+        return prob * dec - 1.0
+
+    @staticmethod
+    def detect_arbitrage(odds_a: float, odds_b: float) -> bool:
+        """Detect arbitrage between two decimal odds."""
+        return (1.0 / odds_a + 1.0 / odds_b) < 1.0

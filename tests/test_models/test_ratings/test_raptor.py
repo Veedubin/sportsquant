@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 
 from sportsquant.models.ratings.raptor_composite import RaptorCompositeFeatures
-from sportsquant.models.ratings.raptor_box import RaptorBoxFeatures, RaptorBoxConfig
 
 
 class TestRaptorCompositeCalculation:

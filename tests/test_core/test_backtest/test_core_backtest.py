@@ -1,15 +1,11 @@
 """Tests for backtesting framework (migrated from sports-bet)."""
 
-import random
-from datetime import date, timedelta
-from unittest.mock import MagicMock, AsyncMock, patch
+from datetime import date
 
 import pytest
 
 from sportsquant.models.analysis.backtest import (
     BacktestEngine,
-    query_historical_projections,
-    query_actual_results,
 )
 from sportsquant.models.analysis.backtest_result import BacktestResult
 from sportsquant.models.analysis.parameter_sweep import ParameterSweep, summarize_sweep_results

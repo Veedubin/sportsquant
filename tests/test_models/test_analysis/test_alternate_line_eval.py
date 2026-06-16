@@ -1,10 +1,8 @@
 """Tests for alternate line evaluation (migrated from sports-bet)."""
 
-import pytest
 
 from sportsquant.models.analysis.alternate_line_eval import (
     AlternateLineEvaluator,
-    AlternateLineResult,
     american_to_decimal,
     american_to_prob,
     clamp,

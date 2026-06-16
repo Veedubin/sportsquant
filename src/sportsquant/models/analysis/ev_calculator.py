@@ -17,7 +17,59 @@ making linear combination more meaningful for probability estimation.
 """
 
 import math
+from dataclasses import dataclass
+from typing import Optional
+
 from .rules import TIER_SCORING_POINTS, NBA_FANTASY_SCORE_WEIGHTS
+
+
+@dataclass
+class EVResult:
+    """Result of an EV calculation."""
+
+    ev: float
+    ev_percent: float
+    expected_profit: float
+    breakeven_probability: float
+    probability: float
+    odds_american: Optional[float] = None
+    odds_decimal: Optional[float] = None
+
+
+def calculate_kelly_stake(
+    probability: float,
+    odds_american: float,
+    bankroll: float,
+    fraction: float = 0.25,
+) -> float:
+    """Calculate Kelly stake."""
+    if odds_american < 0:
+        decimal_odds = 1 + 100 / abs(odds_american)
+    else:
+        decimal_odds = 1 + odds_american / 100
+    b = decimal_odds - 1
+    p = probability
+    q = 1 - p
+    if b * p - q <= 0:
+        return 0.0
+    kelly = (b * p - q) / b
+    return round(kelly * bankroll * fraction, 2)
+
+
+def calculate_breakeven_probability(
+    odds_american: Optional[float] = None, odds_decimal: Optional[float] = None
+) -> float:
+    """Calculate breakeven probability from odds."""
+    if odds_american is None and odds_decimal is None:
+        raise ValueError("Must provide either American or decimal odds")
+    if odds_american is not None:
+        if odds_american < 0:
+            return abs(odds_american) / (abs(odds_american) + 100)
+        else:
+            return 100 / (odds_american + 100)
+    if odds_decimal is not None:
+        return 1.0 / odds_decimal
+    raise ValueError("Could not calculate breakeven probability")
 
 
 def clamp(x: float, lo: float, hi: float) -> float:
@@ -219,3 +271,49 @@ class EVCalculator:
             probability = probability * adjustment
 
         return clamp(probability, 0.01, 0.99)
+
+    def calculate(
+        self,
+        probability: float,
+        odds_american: Optional[float] = None,
+        odds_decimal: Optional[float] = None,
+        stake: float = 1.0,
+    ) -> EVResult:
+        """Calculate expected value for a bet.
+
+        Args:
+            probability: Estimated win probability (0-1)
+            odds_american: American odds (e.g., -110, +150)
+            odds_decimal: Decimal odds (e.g., 2.0)
+            stake: Stake amount
+
+        Returns:
+            EVResult with EV calculation details
+        """
+        if odds_american is None and odds_decimal is None:
+            raise ValueError("Must provide either American or decimal odds")
+
+        if not 0 < probability < 1:
+            raise ValueError(f"Probability must be between 0 and 1, got {probability}")
+
+        if odds_american is not None:
+            odds_decimal_calc = self.american_odds_to_payout(odds_american)
+        else:
+            odds_decimal_calc = odds_decimal
+
+        ev = probability * odds_decimal_calc - 1.0
+        ev_percent = ev * 100
+        expected_profit = ev * stake
+        breakeven_prob = calculate_breakeven_probability(
+            odds_american=odds_american, odds_decimal=odds_decimal
+        )
+
+        return EVResult(
+            ev=ev,
+            ev_percent=ev_percent,
+            expected_profit=expected_profit,
+            breakeven_probability=breakeven_prob,
+            probability=probability,
+            odds_american=odds_american,
+            odds_decimal=odds_decimal_calc,
+        )

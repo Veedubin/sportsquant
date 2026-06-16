@@ -2,10 +2,8 @@
 
 import sqlite3
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 import pandas as pd
-import pytest
 
 from sportsquant.models.analysis.cross_site_ev import CrossSiteEVEngine
 

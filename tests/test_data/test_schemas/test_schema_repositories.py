@@ -7,10 +7,8 @@ individual SQLite*Repository classes. Using inline implementations.
 import sqlite3
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import pandas as pd
-import pytest
 
 
 # =============================================================================

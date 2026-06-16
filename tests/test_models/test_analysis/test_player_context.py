@@ -1,8 +1,6 @@
 """Test script for player context enrichment functionality (migrated from sports-bet)."""
 
 import json
-import sys
-from pathlib import Path
 
 from sportsquant.models.analysis.player_context import get_context_for_prop
 

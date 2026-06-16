@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from sportsquant.data.sources.odds_api.schema import PLAYER_PROP_REQUIRED_COLUMNS
 from sportsquant.data.sources.odds_api.transform import transform_props_response

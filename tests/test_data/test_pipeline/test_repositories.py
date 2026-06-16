@@ -3,10 +3,7 @@
 import sqlite3
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
-import pandas as pd
-import pytest
 
 from sportsquant.data.pipeline.sqlite_repositories import (
     SQLiteMarketRepository,

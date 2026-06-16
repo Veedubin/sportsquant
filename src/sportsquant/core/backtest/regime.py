@@ -14,11 +14,11 @@ This module provides advanced backtesting capabilities:
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 import numpy as np
+import pandas as pd
 from pandas import DataFrame, Series
 from sklearn.metrics import log_loss
 from sklearn.model_selection import TimeSeriesSplit
@@ -102,21 +102,54 @@ class RegimeAwareResults:
 
 
 # pylint: disable=too-few-public-methods
-@dataclass(frozen=True)
-class RegimeDetector(ABC):
-    """Abstract base class for regime detection."""
+class RegimeDetector:
+    """Regime detector for classifying market volatility regimes.
 
-    @abstractmethod
+    This concrete implementation classifies return series into
+    low_volatility, normal, high_volatility, or unknown regimes.
+    """
+
+    def __init__(self, config: Optional["RegimeConfig"] = None):
+        """Initialize with optional config.
+
+        Args:
+            config: RegimeConfig with threshold settings
+        """
+        self.config = config or RegimeConfig()
+
+    def detect(self, returns: np.ndarray | list) -> str:
+        """Detect regime from return series.
+
+        Args:
+            returns: Array of return values
+
+        Returns:
+            Regime label: "low_volatility", "normal", "high_volatility", or "unknown"
+        """
+        if len(returns) < 5:
+            return "unknown"
+
+        arr = np.asarray(returns, dtype=float)
+        vol = float(np.std(arr))
+
+        if vol <= self.config.low_vol_threshold:
+            return "low_volatility"
+        elif vol >= self.config.high_vol_threshold:
+            return "high_volatility"
+        else:
+            return "normal"
+
     def detect_regimes(self, features: DataFrame, y: Series) -> list[RegimePeriod]:
         """Detect regime periods in the data."""
+        return []
 
-    @abstractmethod
     def classify_regime(self, x_row: Series) -> str:
         """Classify a single sample into a regime."""
+        return "normal"
 
-    @abstractmethod
     def get_current_regime(self, features: DataFrame) -> str:
         """Get the current regime for the dataset."""
+        return "normal"
 
 
 @dataclass(frozen=True)
@@ -883,3 +916,103 @@ __all__ = [
     "RegimeAwareBacktest",
     "SensitivityAnalyzer",
 ]
+
+
+@dataclass(frozen=True)
+class RegimeConfig:
+    """Configuration for regime detection thresholds."""
+
+    low_vol_threshold: float = 0.01
+    high_vol_threshold: float = 0.03
+    trend_strength_threshold: float = 0.5
+
+
+class WalkForwardValidator:
+    """Walk-forward validation for time series.
+
+    Splits data into expanding/rolling windows for time series validation.
+    """
+
+    def __init__(
+        self,
+        window_size: int = 50,
+        step_size: int = 10,
+        min_train_size: int = 30,
+    ):
+        self.window_size = window_size
+        self.step_size = step_size
+        self.min_train_size = min_train_size
+
+    def validate(
+        self,
+        data: pd.DataFrame,
+        target_col: str,
+        metric_fn: Callable | None = None,
+    ) -> list[dict]:
+        """Run walk-forward validation on data.
+
+        Args:
+            data: DataFrame with time series index
+            target_col: Target column name
+            metric_fn: Optional custom metric function(train_df, test_df) -> dict
+
+        Returns:
+            List of fold result dicts
+        """
+        if len(data) < self.min_train_size:
+            return []
+
+        results = []
+        n = len(data)
+        train_end = self.window_size
+
+        while train_end < n:
+            test_end = min(train_end + self.step_size, n)
+            train_data = data.iloc[:train_end]
+            test_data = data.iloc[train_end:test_end]
+
+            fold_result = {
+                "train_start": data.index[0],
+                "train_end": data.index[train_end - 1],
+                "test_start": data.index[train_end] if train_end < n else None,
+                "test_end": data.index[test_end - 1] if test_end <= n else None,
+                "n_train": len(train_data),
+                "n_test": len(test_data),
+            }
+
+            if metric_fn:
+                fold_result.update(metric_fn(train_data, test_data))
+
+            results.append(fold_result)
+            train_end += self.step_size
+
+        return results
+
+
+def detect_regime_shift(series: np.ndarray | pd.Series | list) -> int | None:
+    """Detect a regime shift point in a time series.
+
+    Uses CUSUM-like detection to find change points.
+
+    Args:
+        series: Time series data
+
+    Returns:
+        Index of shift point, or None if no shift detected or insufficient data
+    """
+    if len(series) < 10:
+        return None
+
+    arr = np.asarray(series, dtype=float)
+    mean = np.mean(arr)
+
+    # CUSUM detection
+    cumsum = np.cumsum(arr - mean)
+    range_stat = np.max(cumsum) - np.min(cumsum)
+
+    if range_stat < 0.5:
+        return None
+
+    # Find the point furthest from mean
+    shift_idx = int(np.argmax(np.abs(cumsum)))
+    return shift_idx

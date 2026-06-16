@@ -1,9 +1,7 @@
 """Tests for walk-forward validation and regime detection (new)."""
 
-import pytest
 import pandas as pd
 import numpy as np
-from datetime import date, timedelta
 
 from sportsquant.core.backtest.regime import (
     RegimeDetector,

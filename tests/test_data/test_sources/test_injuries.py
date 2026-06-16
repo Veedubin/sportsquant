@@ -1,8 +1,7 @@
 """Tests for ESPN injury scraper (new)."""
 
-import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, date
+from datetime import date
 
 from sportsquant.data.sources.espn_injuries.scraper import (
     ESPNInjuryScraper,
@@ -118,7 +117,7 @@ class TestESPNInjuryScraper:
         """Test parsing an injury table row."""
         scraper = ESPNInjuryScraper()
         # Mock HTML row
-        html_row = """
+        _html_row = """
         <tr>
             <td><a>LeBron James</a></td>
             <td>Lakers</td>

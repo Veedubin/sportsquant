@@ -8,7 +8,61 @@ import re
 import unicodedata
 from typing import Optional, NamedTuple
 
-from rapidfuzz import fuzz
+try:
+    from rapidfuzz import fuzz
+except ImportError:
+    # Fallback: use difflib for fuzzy matching when rapidfuzz not installed
+    from difflib import SequenceMatcher
+
+    def _fuzz_ratio(a: str, b: str) -> int:
+        return int(SequenceMatcher(None, a.lower(), b.lower()).ratio() * 100)
+
+    def _fuzz_partial_ratio(a: str, b: str) -> int:
+        # Find the best matching substring
+        len_a, len_b = len(a), len(b)
+        if len_a > len_b:
+            a, b = b, a
+            len_a, len_b = len_b, len_a
+        best = 0.0
+        for i in range(len_b - len_a + 1):
+            window = b[i : i + len_a]
+            score = SequenceMatcher(None, a.lower(), window.lower()).ratio()
+            if score > best:
+                best = score
+        return int(best * 100)
+
+    def _fuzz_token_set_ratio(a: str, b: str) -> int:
+        # Tokenize and compare token sets
+        set_a = set(a.lower().split())
+        set_b = set(b.lower().split())
+        if not set_a and not set_b:
+            return 100
+        if not set_a or not set_b:
+            return 0
+        common = set_a & set_b
+        diff_a = set_a - set_b
+        diff_b = set_b - set_a
+        combined_a = " ".join(common | diff_a)
+        combined_b = " ".join(common | diff_b)
+        combined_ab = " ".join(common)
+        scores = []
+        if combined_a and combined_b:
+            scores.append(int(SequenceMatcher(None, combined_a, combined_b).ratio() * 100))
+        if combined_ab and combined_a:
+            scores.append(int(SequenceMatcher(None, combined_ab, combined_a).ratio() * 100))
+        if combined_ab and combined_b:
+            scores.append(int(SequenceMatcher(None, combined_ab, combined_b).ratio() * 100))
+        return max(scores) if scores else 0
+
+    fuzz = type(
+        "Fuzz",
+        (),
+        {
+            "ratio": staticmethod(_fuzz_ratio),
+            "partial_ratio": staticmethod(_fuzz_partial_ratio),
+            "token_set_ratio": staticmethod(_fuzz_token_set_ratio),
+        },
+    )()
 
 # Known nickname mappings
 NICKNAME_TO_CANONICAL: dict[str, str] = {

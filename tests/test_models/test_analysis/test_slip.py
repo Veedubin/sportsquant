@@ -1,13 +1,10 @@
 """Tests for slip optimizer (new)."""
 
-import pytest
-import numpy as np
 
 from sportsquant.models.analysis.slip_optimizer import (
     SlipOptimizer,
     SlipConfig,
     SlipEntry,
-    OptimizedSlip,
     optimize_slip,
 )
 

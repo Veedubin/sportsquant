@@ -1,16 +1,12 @@
 """Tests for betting engine — EV calculation, arbitrage detection, BetDecision (new)."""
 
 import pytest
-from datetime import datetime
-from decimal import Decimal
 
 from sportsquant.core.betting.engine import (
-    BettingEngine,
     BetDecision,
     BetResult,
     calculate_ev,
     detect_arbitrage,
-    american_to_decimal,
 )
 
 
