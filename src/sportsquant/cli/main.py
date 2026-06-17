@@ -1534,3 +1534,88 @@ def nfl_props(
         "\n[yellow]Note:[/yellow] Live prop listing requires a data source module. "
         "See Phase 3: NFL Data Source Module."
     )
+
+
+@nfl.command("predict-game")
+@click.option("--home", type=str, required=True, help="Home team abbreviation (e.g. KC)")
+@click.option("--away", type=str, required=True, help="Away team abbreviation (e.g. BAL)")
+@click.option("--season", type=int, required=True, help="NFL season (e.g. 2024)")
+@click.option("--week", type=int, required=True, help="NFL week (1-22)")
+@click.option(
+    "--model-path",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Directory with saved classifier.json/spread.json/total.json. "
+    "If omitted, uses synthetic default model.",
+)
+@click.option(
+    "--n-games", type=int, default=600, help="Synthetic games when training default model"
+)
+def nfl_predict_game(
+    home: str,
+    away: str,
+    season: int,
+    week: int,
+    model_path: Optional[str],
+    n_games: int,
+) -> None:
+    """Predict NFL game outcome (win prob, spread, total) using XGBoost.
+
+    Uses team-level aggregates from nflfastR if available, otherwise falls
+    back to a default model trained on synthetic data.
+
+    Example:
+        sportsquant nfl predict-game --home KC --away BAL --season 2024 --week 10
+    """
+    from pathlib import Path
+
+    from sportsquant.data.nfl import NFLDataConfig, NFLDataPipeline
+    from sportsquant.models.predictive.nfl_game_model import (
+        NFLGameFeatures,
+        NFLGamePredictor,
+        build_features_from_pipeline,
+        train_default_model,
+    )
+
+    console.print(f"[cyan]NFL Game Prediction[/cyan] — {away} @ {home} (W{week}, {season})")
+
+    # Load or train predictor
+    if model_path:
+        predictor = NFLGamePredictor.load(Path(model_path))
+        console.print(f"[green]Loaded model from[/green] {model_path}")
+    else:
+        console.print("[yellow]No model_path provided — training default synthetic model[/yellow]")
+        predictor = train_default_model(n_games=n_games, verbose=False)
+
+    # Build features from NFL pipeline (gracefully degrades if no data)
+    try:
+        pipeline = NFLDataPipeline(config=NFLDataConfig())
+        features = build_features_from_pipeline(
+            pipeline, home_team=home, away_team=away, season=season, week=week
+        )
+    except Exception as e:  # noqa: BLE001 - network/cache errors are expected
+        console.print(f"[yellow]Pipeline data unavailable ({e}) — using zeroed features[/yellow]")
+        features = NFLGameFeatures(home_team=home, away_team=away, season=season, week=week)
+
+    pred = predictor.predict(features)
+
+    table = Table(title=f"{pred.away_team} @ {pred.home_team} — W{week} {pred.season}")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    table.add_row(f"{pred.home_team} win probability", _fmt_pct(pred.home_win_prob))
+    table.add_row(f"{pred.away_team} win probability", _fmt_pct(pred.away_win_prob))
+    table.add_row(
+        f"Projected spread ({pred.home_team} perspective)",
+        f"{pred.proj_spread:+.1f}",
+    )
+    table.add_row("Projected total", f"{pred.proj_total:.1f}")
+    console.print(table)
+
+    if predictor.feature_importances:
+        sorted_imp = sorted(predictor.feature_importances.items(), key=lambda x: -x[1])[:5]
+        imp_table = Table(title="Top 5 Feature Importances")
+        imp_table.add_column("Feature", style="cyan")
+        imp_table.add_column("Importance", style="green")
+        for feat, imp in sorted_imp:
+            imp_table.add_row(feat, f"{imp:.4f}")
+        console.print(imp_table)
