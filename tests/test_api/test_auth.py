@@ -4,7 +4,6 @@ Note: sportsquant.api.auth module is not yet implemented.
 This test file is a template ready for when the auth module is added.
 """
 
-
 import pytest
 
 
@@ -30,7 +29,7 @@ class _UserLogin:
 
 
 class _AuthService:
-    """Inline AuthService for testing when module doesn't exist."""
+    """Inline AuthService for testing when module doesn't exist yet."""
 
     def __init__(self):
         self._users: dict[str, dict] = {}
@@ -46,6 +45,7 @@ class _AuthService:
         user = {
             "id": self._next_id,
             "username": user_data.username,
+            "password": user_data.password,
             "created_at": "2024-01-01T00:00:00",
         }
         self._users[user_data.username] = user
@@ -54,7 +54,8 @@ class _AuthService:
 
     def login(self, login_data: _UserLogin):
         if login_data.username in self._users:
-            return "mock-token-12345"
+            if self._users[login_data.username]["password"] == login_data.password:
+                return "mock-token-12345"
         return None
 
     def create_access_token(self, user_id: int, username: str):

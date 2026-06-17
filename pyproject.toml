@@ -33,6 +33,9 @@ dependencies = [
     # --- API Server ---
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.6",
+    "aiofiles>=23.0.0",
 
     # --- Database ---
     "duckdb>=0.9.0",
@@ -94,6 +97,7 @@ sportsquant = "sportsquant.cli.main:app"
 sportsquant-nba = "sportsquant.cli.nba_main:app"
 sportsquant-poller = "sportsquant.infra.poller.main:main"
 sportsquant-api = "sportsquant.api.betting_api:app"
+sportsquant-web = "sportsquant.web.app:create_app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sportsquant"]

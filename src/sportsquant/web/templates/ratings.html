@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Power Ratings</h1>
+
+<div class="mb-6">
+    <div class="flex gap-2 border-b border-gray-700">
+        <button class="tab-btn px-4 py-2 text-sm font-bold text-green-400 border-b-2 border-green-400" data-tab="massey">Massey</button>
+        <button class="tab-btn px-4 py-2 text-sm font-bold text-gray-400 hover:text-white transition" data-tab="raptor">RAPTOR</button>
+        <button class="tab-btn px-4 py-2 text-sm font-bold text-gray-400 hover:text-white transition" data-tab="pagerank">PageRank</button>
+    </div>
+</div>
+
+{% for model_name, entries in ratings.items() %}
+<div class="tab-content {% if model_name != 'massey' %}hidden{% endif %}" id="tab-{{ model_name }}">
+    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-gray-700 bg-gray-750">
+                    <th class="px-4 py-3 text-gray-400 text-sm font-semibold w-16">#</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-semibold">Team</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-semibold text-right">Rating</th>
+                    <th class="px-4 py-3 text-gray-400 text-sm font-semibold">Conf</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr class="border-b border-gray-750 hover:bg-gray-750 transition">
+                    <td class="px-4 py-2 font-mono text-gray-400">{{ entry.rank }}</td>
+                    <td class="px-4 py-2 font-bold {% if entry.rank <= 3 %}text-green-400{% elif entry.rank <= 6 %}text-blue-400{% else %}text-gray-200{% endif %}">{{ entry.team }}</td>
+                    <td class="px-4 py-2 text-right font-mono">{{ entry.rating }}</td>
+                    <td class="px-4 py-2">
+                        <span class="px-2 py-0.5 rounded text-xs {% if entry.conference == 'East' %}bg-blue-900 text-blue-300{% else %}bg-red-900 text-red-300{% endif %}">{{ entry.conference }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+<div class="mt-8 bg-gray-800 rounded-lg p-6 border border-gray-700">
+    <h3 class="text-lg font-bold mb-3">Rating Models</h3>
+    <div class="text-sm text-gray-400 space-y-2">
+        <p><strong class="text-gray-200">Massey Ratings</strong> — Least-squares method that solves for team strengths based on point differentials. Higher rating = stronger team.</p>
+        <p><strong class="text-gray-200">RAPTOR Composite</strong> — FiveThirtyEight's composite rating combining offensive and defensive efficiency with predictive power.</p>
+        <p><strong class="text-gray-200">PageRank</strong> — Network-based rating using game outcomes as directed edges. Considers strength of schedule automatically.</p>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        // Update button styles
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            b.classList.remove('text-green-400', 'border-b-2', 'border-green-400');
+            b.classList.add('text-gray-400');
+        });
+        btn.classList.add('text-green-400', 'border-b-2', 'border-green-400');
+        btn.classList.remove('text-gray-400');
+        // Show/hide tab content
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        document.getElementById('tab-' + tab).classList.remove('hidden');
+    });
+});
+</script>
+{% endblock %}

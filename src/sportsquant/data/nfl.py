@@ -11,15 +11,14 @@ All sources support caching to disk and return normalized DataFrames.
 
 from __future__ import annotations
 
-import json
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+
+from sportsquant.data.sources.espn_injuries.scraper import ESPNInjuryScraper
 
 
 # ──────────────────────────────────────────────
@@ -144,7 +143,8 @@ class NFLfastRSource:
 class ESPNInjurySource:
     """Fetches NFL injury reports from ESPN public API.
 
-    Endpoint: https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries
+    Delegates to the ESPN injury scraper module for HTTP requests
+    and HTML/JSON parsing, then normalizes the result into a DataFrame.
 
     Returns:
         DataFrame with columns: team, player_name, position, status,
@@ -153,37 +153,55 @@ class ESPNInjurySource:
 
     def __init__(self, config: NFLDataConfig):
         self.config = config
+        self._scraper: ESPNInjuryScraper | None = None
+
+    @property
+    def scraper(self) -> ESPNInjuryScraper:
+        """Lazy-initialize the scraper with the configured URL."""
+        if self._scraper is None:
+            self._scraper = ESPNInjuryScraper(base_url=self.config.espn_injury_url)
+        return self._scraper
 
     def fetch(self) -> pd.DataFrame:
-        """Fetch current NFL injury report."""
-        url = self.config.espn_injury_url
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        """Fetch current NFL injury report via the ESPN scraper.
 
-        try:
-            with urllib.request.urlopen(req, timeout=15) as response:
-                data = json.loads(response.read().decode())
-        except Exception as e:
-            print(f"ESPN injury fetch failed: {e}")
+        First tries the structured API endpoint, then falls back
+        to the configured URL. Returns a normalized DataFrame.
+        """
+        # Try API endpoint first (structured JSON data)
+        reports = self.scraper.get_injuries_from_api()
+        if reports:
+            records = [
+                {
+                    "team": r.team,
+                    "player_name": r.player_name,
+                    "position": "",
+                    "status": r.status.value,
+                    "injury_type": r.injury,
+                    "practice_status": "",
+                    "game_status": "",
+                }
+                for r in reports
+            ]
+            return pd.DataFrame(records)
+
+        # Fallback: scrape from the configured URL
+        reports = self.scraper.get_injuries()
+        if not reports:
             return pd.DataFrame()
 
-        records = []
-        for team_entry in data.get("injuries", []):
-            team = team_entry.get("team", {}).get("displayName", "Unknown")
-            for injury in team_entry.get("injuries", []):
-                records.append(
-                    {
-                        "team": team,
-                        "player_name": injury.get("athlete", {}).get("displayName", ""),
-                        "position": injury.get("athlete", {})
-                        .get("position", {})
-                        .get("abbreviation", ""),
-                        "status": injury.get("status", ""),
-                        "injury_type": injury.get("type", {}).get("name", ""),
-                        "practice_status": injury.get("practiceStatus", ""),
-                        "game_status": injury.get("gameStatus", ""),
-                    }
-                )
-
+        records = [
+            {
+                "team": r.team,
+                "player_name": r.player_name,
+                "position": "",
+                "status": r.status.value,
+                "injury_type": r.injury,
+                "practice_status": "",
+                "game_status": "",
+            }
+            for r in reports
+        ]
         return pd.DataFrame(records)
 
 

@@ -1,7 +1,7 @@
 .PHONY: install install-dev test lint format typecheck docs clean \
-       docker-build docker-up docker-down \
-       k8s-deploy k8s-destroy kind-up kind-down \
-       all
+        docker-build docker-up docker-down \
+        k8s-deploy k8s-destroy kind-up kind-down \
+        web all
 
 # ── Install ──────────────────────────────────────────────────────────────
 
@@ -65,6 +65,11 @@ kind-up:
 
 kind-down:
 	kind delete cluster --name sports-platform
+
+# ── Web Dashboard ───────────────────────────────────────────────────────────
+
+web:
+	uv run uvicorn sportsquant.web.app:app --host 0.0.0.0 --port 8080 --reload
 
 # ── Composite Targets ─────────────────────────────────────────────────────
 

@@ -1,9 +1,12 @@
 """Spark data producer stub."""
 
+import threading
 from typing import Optional
-from unittest.mock import MagicMock
 
-from sportsquant.data.pipeline.producer_config import ProducerSettings
+from sportsquant.data.pipeline.producer_config import (
+    ProducerSettings,
+    get_transform_function,
+)
 
 
 def start_metrics_server():
@@ -18,7 +21,7 @@ class SparkDataProducer:
         self._settings = settings or ProducerSettings(kafka_bootstrap_servers="localhost:9092")
         self._consumer = None
         self._producer = None
-        self._shutdown_event = MagicMock()
+        self._shutdown_event = threading.Event()
 
     def _process_message(self, message: str, mapping) -> Optional[list]:
         import json
@@ -27,7 +30,6 @@ class SparkDataProducer:
             data = json.loads(message)
         except json.JSONDecodeError:
             return None
-        from sportsquant.data.pipeline.producer_config import get_transform_function
 
         transform = get_transform_function(mapping.transform_func)
         if transform is None:

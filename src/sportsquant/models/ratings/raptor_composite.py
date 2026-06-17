@@ -127,6 +127,8 @@ class RaptorCompositeFeatures:
 
     def compute_raptor_total(self, df: DataFrame) -> Series:
         """Compute total RAPTOR rating."""
+        if df.empty:
+            raise ValueError("DataFrame is empty — cannot compute RAPTOR total")
         offensive = self.compute_offensive_raptor(df)
         defensive = self.compute_defensive_raptor(df)
 

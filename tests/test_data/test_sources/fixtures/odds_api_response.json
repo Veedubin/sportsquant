@@ -1,0 +1,40 @@
+[
+  {
+    "opp_team_abbr": "BOS",
+    "outcomes": [
+      {
+        "description": "LeBron James",
+        "name": "Over",
+        "price": -110,
+        "point": 27.5,
+        "team_guess": "LAL"
+      },
+      {
+        "description": "LeBron James",
+        "name": "Under",
+        "price": -105,
+        "point": 27.5,
+        "team_guess": "LAL"
+      }
+    ]
+  },
+  {
+    "opp_team_abbr": "MIA",
+    "outcomes": [
+      {
+        "description": "Unknown Rookie",
+        "name": "Over",
+        "price": 120,
+        "point": 10.5,
+        "team_guess": "CHI"
+      },
+      {
+        "description": "Unknown Rookie",
+        "name": "Under",
+        "price": -140,
+        "point": 10.5,
+        "team_guess": "CHI"
+      }
+    ]
+  }
+]

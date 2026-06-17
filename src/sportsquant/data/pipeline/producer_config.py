@@ -1,7 +1,12 @@
 """Pipeline producer config stub."""
 
+import os
 from dataclasses import dataclass
 from typing import Callable, Optional
+
+# Placeholder for kafka-python KafkaProducer class.
+# Tests patch this attribute; in production it is set to the real class.
+KafkaProducer = None
 
 
 @dataclass
@@ -34,7 +39,6 @@ class ProducerSettings:
 
     @classmethod
     def from_env(cls) -> "ProducerSettings":
-        import os
 
         return cls(
             kafka_bootstrap_servers=os.getenv(
@@ -55,10 +59,11 @@ def create_producer_config(settings: ProducerSettings) -> dict:
 
 
 def create_kafka_producer(settings: Optional[ProducerSettings] = None):
-    """Create Kafka producer (stub)."""
-    from unittest.mock import MagicMock
-
-    return MagicMock()
+    """Create Kafka producer."""
+    if settings is None:
+        settings = ProducerSettings.from_env()
+    config = create_producer_config(settings)
+    return KafkaProducer(**config)
 
 
 def transform_player_stats(data: dict) -> dict:
