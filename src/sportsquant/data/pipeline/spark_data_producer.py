@@ -3,9 +3,9 @@
 import threading
 from typing import Optional
 
-from sportsquant.data.pipeline.producer_config import (  # noqa: F401
+from sportsquant.data.pipeline.producer_config import (
     ProducerSettings,
-    create_kafka_producer,
+    create_kafka_producer,  # noqa: F401 — imported for test patching
     get_transform_function,
 )
 
