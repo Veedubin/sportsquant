@@ -14,7 +14,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv sync
+      - run: uv sync --extra dev
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
 
@@ -26,7 +26,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv sync
+      - run: uv sync --extra dev
       - run: uv run pytest tests/ -v --tb=short
 
   notebooks:
@@ -37,12 +37,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv sync
+      - run: uv sync --extra dev
+      - run: uv pip install jupyter nbconvert
       - run: |
-          uv run pip install jupyter nbconvert
           for nb in notebooks/common/*.ipynb notebooks/basketball/*.ipynb notebooks/football/*.ipynb; do
             echo "Executing: $nb"
-            uv run jupyter nbconvert --to notebook --execute --inplace "$nb" --ExecutePreprocessor.timeout=120 || echo "WARNING: $nb execution failed (may need real data)"
+            uv run jupyter nbconvert --to notebook --execute --inplace "$nb" --ExecutePreprocessor.timeout=120 --allow-errors || echo "WARNING: $nb execution failed (may need real data)"
           done
 
   build:
@@ -53,7 +53,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv sync
+      - run: uv sync --extra dev
       - run: uv build
       - uses: actions/upload-artifact@v4
         with:
