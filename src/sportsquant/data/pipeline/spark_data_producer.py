@@ -3,7 +3,7 @@
 import threading
 from typing import Optional
 
-from sportsquant.data.pipeline.producer_config import (
+from sportsquant.data.pipeline.producer_config import (  # noqa: F401
     ProducerSettings,
     create_kafka_producer,
     get_transform_function,
