@@ -391,6 +391,60 @@ def calculate_performance_metrics(
     )
 
 
+def empty_performance_metrics() -> PerformanceMetrics:
+    """Return a zero-valued PerformanceMetrics instance.
+
+    Used by :class:`sportsquant.core.betting.strategies.registry.StrategyRegistry`
+    when a strategy produced no bets and the normal
+    :func:`calculate_performance_metrics` pipeline has no series to crunch.
+
+    Returns:
+        A :class:`PerformanceMetrics` with all numeric fields set to 0.0
+        and streak/type fields set to safe empty values.
+    """
+    zero_core = CoreMetrics(
+        total_bets=0,
+        win_rate=0.0,
+        total_pnl=0.0,
+        mean_pnl_per_bet=0.0,
+        mean_ev_per_bet=0.0,
+    )
+    zero_risk = RiskAdjustedMetrics(
+        sharpe_ratio=0.0,
+        sortino_ratio=0.0,
+        calmar_ratio=0.0,
+        profit_factor=0.0,
+    )
+    zero_dd = DrawdownMetrics(
+        max_drawdown=0.0,
+        max_drawdown_pct=0.0,
+        max_drawdown_duration=0,
+    )
+    zero_streak = StreakMetrics(
+        max_win_streak=0,
+        max_loss_streak=0,
+        current_streak=0,
+        current_streak_type="none",
+    )
+    zero_dist = DistributionMetrics(
+        pnl_std=0.0,
+        pnl_skewness=0.0,
+        pnl_kurtosis=0.0,
+    )
+    zero_returns = ReturnMetrics(
+        total_return_pct=0.0,
+        return_on_risk=0.0,
+    )
+    return PerformanceMetrics(
+        core=zero_core,
+        risk_adjusted=zero_risk,
+        drawdown=zero_dd,
+        streaks=zero_streak,
+        distribution=zero_dist,
+        returns=zero_returns,
+    )
+
+
 def ranked_probability_score(predictions: np.ndarray, outcomes: np.ndarray) -> float:
     """Calculate ranked probability score for binary predictions.
 

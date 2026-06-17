@@ -283,3 +283,67 @@ class NFLDataPipeline:
             "odds": self.get_odds(week=week),
             "fetched_at": datetime.utcnow().isoformat(),
         }
+
+    def get_multi_book_odds(
+        self,
+        api_key: str,
+        *,
+        sport_key: str = "americanfootball_nfl",
+        regions: str = "us",
+        markets: str = "h2h,spreads,totals",
+        odds_format: str = "american",
+    ) -> pd.DataFrame:
+        """Fetch NFL odds across multiple books via The Odds API.
+
+        Returns a per-(game, bookmaker) DataFrame with strict schema
+        (event_id, commence_time, home_team, away_team, source_id,
+        ml_home, ml_away, spread_home, spread_home_price, spread_away_price,
+        total, total_over_price, total_under_price).
+
+        Args:
+            api_key: The Odds API key (https://the-odds-api.com).
+            sport_key: Odds API sport key (default NFL).
+            regions: Comma-separated regions.
+            markets: Comma-separated markets.
+            odds_format: "american" or "decimal".
+        """
+        try:
+            import httpx
+        except ImportError as e:
+            raise ImportError("httpx required for Odds API. Install: uv add httpx") from e
+
+        from sportsquant.data.sources.odds_api.game_lines import (
+            parse_game_lines_to_raw,
+        )
+
+        url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
+        params = {
+            "apiKey": api_key,
+            "regions": regions,
+            "markets": markets,
+            "oddsFormat": odds_format,
+        }
+        resp = httpx.get(url, params=params, timeout=30.0)
+        resp.raise_for_status()
+        events = resp.json()
+        return parse_game_lines_to_raw(events)
+
+    def detect_middles(
+        self,
+        df: pd.DataFrame,
+        *,
+        min_middle_points: float = 1.0,
+    ) -> pd.DataFrame:
+        """Detect spread and total middling opportunities.
+
+        Wraps ``sportsquant.core.betting.strategies.middling.detect_middles``
+        so callers using the NFL pipeline get a single import path.
+
+        Args:
+            df: DataFrame with at least ``game_id`` + ``spread_home`` and/or
+                ``total`` columns (typically from ``get_multi_book_odds``).
+            min_middle_points: Minimum gap between books to count as middle.
+        """
+        from sportsquant.core.betting.strategies.middling import detect_middles
+
+        return detect_middles(df, min_middle_points=min_middle_points)
