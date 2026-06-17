@@ -1,6 +1,5 @@
 """Tests for slip optimizer (new)."""
 
-
 from sportsquant.models.analysis.slip_optimizer import (
     SlipOptimizer,
     SlipConfig,

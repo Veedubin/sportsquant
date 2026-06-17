@@ -1,6 +1,5 @@
 """Tests for alternate line evaluation (migrated from sports-bet)."""
 
-
 from sportsquant.models.analysis.alternate_line_eval import (
     AlternateLineEvaluator,
     american_to_decimal,

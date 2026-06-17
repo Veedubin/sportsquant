@@ -1,6 +1,5 @@
 """Tests for DraftKings utility functions (migrated from sports-bet)."""
 
-
 from sportsquant.data.sources.draftkings.utils import (
     american_to_decimal,
     american_to_prob,

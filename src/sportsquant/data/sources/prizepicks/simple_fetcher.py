@@ -1,7 +1,6 @@
 """Simple PrizePicks fetcher stub."""
 
 
-
 class SimplePrizePicksFetcher:
     """Stub for SimplePrizePicksFetcher."""
 
