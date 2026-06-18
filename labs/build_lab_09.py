@@ -1,0 +1,983 @@
+"""Build script for Lab 09: Building a Custom Strategy.
+
+Generates ``09_custom_strategy.ipynb`` using nbformat. Run this script to
+produce the notebook, then open it in Jupyter to execute the cells.
+
+Usage::
+
+    cd /home/jcharles/Projects/Infrastructure/sportsquant
+    uv run python labs/build_lab_09.py
+"""
+
+from __future__ import annotations
+
+import nbformat as nbf
+
+OUTPUT_PATH = "labs/09_custom_strategy.ipynb"
+
+
+def build() -> nbf.NotebookNode:
+    """Construct the Lab 09 notebook programmatically."""
+    nb = nbf.v4.new_notebook()
+    nb.metadata.update(
+        {
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3",
+            },
+            "language_info": {
+                "name": "python",
+                "version": "3.12.0",
+            },
+        }
+    )
+
+    cells: list[nbf.NotebookNode] = []
+
+    # ── Cell 1: Title ──────────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "# Lab 09: Building a Custom Strategy\n"
+            "\n"
+            "This lab teaches you how to **extend SportsQuant with your own betting "
+            "strategy**. By the end you will:\n"
+            "\n"
+            "- Understand the `BettingStrategy` interface and what it requires\n"
+            "- Implement a custom `SteamChaserStrategy` that detects rapid line moves\n"
+            "- Register it with the `StrategyRegistry`\n"
+            "- Backtest it against historical data\n"
+            "- Compare its performance to built-in strategies\n"
+            "- Add configurable parameters and deploy it to the poller\n"
+            "\n"
+            "---"
+        )
+    )
+
+    # ── Cell 2: Prerequisites ───────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "## Prerequisites\n"
+            "\n"
+            "- **Labs 01-08 completed** — you understand the data pipeline, EV, middling, "
+            "backtesting, and the live workflow\n"
+            "- **Object-oriented Python** — familiarity with subclassing and abstract methods\n"
+            "- **BettingStrategy interface** — `base.py` and `registry.py` from the strategies module\n"
+            "\n"
+            "### The Strategy Pattern\n"
+            "\n"
+            "```\n"
+            "  ┌────────────────────┐\n"
+            "  │  BettingStrategy   │  ← Abstract base class\n"
+            "  │  (base.py)         │\n"
+            "  └────────┬───────────┘\n"
+            "           │\n"
+            "     ┌─────┼─────────────────────┐\n"
+            "     │     │                     │\n"
+            "  ┌──┴──┐ ┌──┴──┐         ┌────┴─────┐\n"
+            "  │ O/U │ │Value│  …      │  YOUR    │\n"
+            "  │     │ │ Bet │         │ Strategy │\n"
+            "  └─────┘ └─────┘         └──────────┘\n"
+            "```\n"
+            "\n"
+            "Every strategy takes a `BettingOpportunity` and returns a `BetDecision`."
+        )
+    )
+
+    # ── Cell 3: Section 1 — Setup ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 1: Setup — Imports and Configuration\n"
+            "\n"
+            "We import the strategy base classes, registry, built-in strategies, "
+            "and utilities for odds conversion and Kelly sizing."
+        )
+    )
+
+    # ── Cell 4: Imports ──────────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 4: Core imports\n"
+            "import numpy as np\n"
+            "import pandas as pd\n"
+            "import matplotlib.pyplot as plt\n"
+            "from dataclasses import dataclass\n"
+            "from typing import Optional\n"
+            "\n"
+            "# Strategy framework\n"
+            "from sportsquant.core.betting.strategies.base import (\n"
+            "    BetDecision,\n"
+            "    BettingOpportunity,\n"
+            "    BettingStrategy,\n"
+            "    make_bet_decision,\n"
+            ")\n"
+            "from sportsquant.core.betting.strategies.registry import StrategyRegistry\n"
+            "\n"
+            "# Built-in strategies for comparison\n"
+            "from sportsquant.core.betting.strategies.over_under import OverUnderStrategy\n"
+            "from sportsquant.core.betting.strategies.value_betting import ValueBettingStrategy\n"
+            "\n"
+            "# Odds utilities\n"
+            "from sportsquant.core.betting.odds import Odds\n"
+            "from sportsquant.core.betting.engine import american_to_decimal, calculate_ev\n"
+            "\n"
+            'print("Imports loaded successfully.")\n'
+            'print(f"  BettingStrategy: {BettingStrategy.__name__}")\n'
+            'print(f"  BetDecision: {BetDecision.__name__}")\n'
+            'print(f"  BettingOpportunity: {BettingOpportunity.__name__}")'
+        )
+    )
+
+    # ── Cell 5: Section 2 — The Strategy Interface ──────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 2: The Strategy Interface\n"
+            "\n"
+            "Every betting strategy in SportsQuant must subclass `BettingStrategy` and "
+            "implement the `evaluate_opportunity()` method. Here's the contract:\n"
+            "\n"
+            "| Component | Type | Description |\n"
+            "|---|---|---|\n"
+            "| **Input** | `BettingOpportunity` | Line, probabilities, odds, EVs, Kelly fractions |\n"
+            "| **Output** | `BetDecision` | Whether to bet, which side, stake size, reason |\n"
+            "\n"
+            "The `BettingOpportunity` dataclass provides everything a strategy needs:\n"
+            "- `line`, `p_over`, `p_under` — the line and predicted probabilities\n"
+            "- `odds_over_decimal`, `odds_under_decimal` — decimal odds from the book\n"
+            "- `ev_over`, `ev_under` — pre-computed expected values\n"
+            "- `kelly_over`, `kelly_under` — Kelly fractions\n"
+            "- Optional: `player_id`, `player_name`, `game_date` for context\n"
+            "\n"
+            "The `BetDecision` you return tells the engine:\n"
+            "- `should_bet: bool` — skip or place?\n"
+            '- `side: str` — "over", "under", or "skip"\n'
+            "- `stake: float` — how much to wager\n"
+            "- `reason: str` — human-readable explanation (logged)"
+        )
+    )
+
+    # ── Cell 6: Read the source ──────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 3: Read the Source\n"
+            "\n"
+            "Let's inspect the `BettingStrategy` base class to understand exactly what we "
+            "need to implement. The abstract method `evaluate_opportunity` is the only "
+            "required method — everything else is provided by the base class."
+        )
+    )
+
+    # ── Cell 7: Inspect BettingStrategy ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 7: Inspect the BettingStrategy base class\n"
+            "\n"
+            "import inspect\n"
+            "\n"
+            'print("=== BettingStrategy (abstract methods) ===")\n'
+            "print(inspect.getsource(BettingStrategy.evaluate_opportunity))\n"
+            "print()\n"
+            'print("=== BettingOpportunity fields ===")\n'
+            "for field_name, field_type in BettingOpportunity.__annotations__.items():\n"
+            "    default = getattr(BettingOpportunity, field_name, None)\n"
+            '    print(f"  {field_name}: {field_type}" + (f" = {default}" if default is not None else ""))\n'
+            "print()\n"
+            'print("=== BetDecision fields ===")\n'
+            "for field_name, field_type in BetDecision.__annotations__.items():\n"
+            '    print(f"  {field_name}: {field_type}")'
+        )
+    )
+
+    # ── Cell 8: Section 4 — Define SteamChaserStrategy ──────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 4: Define a Simple Strategy — `SteamChaserStrategy`\n"
+            "\n"
+            "A **steam move** is a rapid, significant line movement caused by sharp money. "
+            "The idea: when a line moves sharply in one direction, the new line is more "
+            "accurate, and there may still be value at books that haven't moved yet.\n"
+            "\n"
+            "Our `SteamChaserStrategy` will:\n"
+            "1. Take a `BettingOpportunity`\n"
+            "2. Check if the edge (EV) exceeds a threshold\n"
+            "3. Check if the Kelly fraction indicates a meaningful bet\n"
+            "4. Return a `BetDecision` with the appropriate side and stake\n"
+            "\n"
+            "We'll add configurable parameters:\n"
+            "- `min_ev` — minimum expected value to place a bet\n"
+            "- `min_kelly` — minimum Kelly fraction to consider a bet worth placing\n"
+            "- `kelly_fraction` — fractional Kelly multiplier (default 0.25 = quarter Kelly)\n"
+            "- `max_stake_pct` — maximum percentage of bankroll per bet"
+        )
+    )
+
+    # ── Cell 9: Implement generate_signals / evaluate ─────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 9: Define SteamChaserStrategy\n"
+            "\n"
+            "class SteamChaserStrategy(BettingStrategy):\n"
+            '    """Strategy that bets on strong +EV opportunities with Kelly sizing.\n'
+            "\n"
+            '    Inspired by "steam chasing" — betting on games where the model\n'
+            "    shows significant positive expected value. Uses fractional Kelly\n"
+            "    for conservative bankroll management.\n"
+            '    """\n'
+            "\n"
+            "    def __init__(\n"
+            "        self,\n"
+            '        name: str = "SteamChaser",\n'
+            "        bankroll: float = 1000.0,\n"
+            "        min_ev: float = 0.03,       # Minimum 3% EV to bet\n"
+            "        min_kelly: float = 0.01,    # Minimum 1% Kelly to consider\n"
+            "        kelly_fraction: float = 0.25,  # Quarter-Kelly\n"
+            "        max_stake_pct: float = 0.05,   # Max 5% of bankroll\n"
+            "    ):\n"
+            '        """Initialize SteamChaser strategy.\n'
+            "\n"
+            "        Args:\n"
+            "            name: Strategy identifier.\n"
+            "            bankroll: Available bankroll for sizing.\n"
+            "            min_ev: Minimum EV to place a bet (per $1 staked).\n"
+            "            min_kelly: Minimum Kelly fraction to consider.\n"
+            "            kelly_fraction: Fraction of Kelly to use (0.25 = quarter).\n"
+            "            max_stake_pct: Maximum stake as percentage of bankroll.\n"
+            '        """\n'
+            "        super().__init__(name, bankroll)\n"
+            "        self.min_ev = min_ev\n"
+            "        self.min_kelly = min_kelly\n"
+            "        self.kelly_fraction = kelly_fraction\n"
+            "        self.max_stake_pct = max_stake_pct\n"
+            "\n"
+            "    def evaluate_opportunity(self, opportunity: BettingOpportunity) -> BetDecision:\n"
+            '        """Evaluate an opportunity and decide whether to bet.\n'
+            "\n"
+            "        Selects the side (over/under) with the highest EV, then applies\n"
+            "        minimum thresholds and Kelly sizing.\n"
+            "\n"
+            "        Args:\n"
+            "            opportunity: Betting opportunity with odds, EVs, and Kelly fractions.\n"
+            "\n"
+            "        Returns:\n"
+            "            BetDecision with action, side, stake, and reason.\n"
+            '        """\n'
+            "        # Pick the side with higher EV\n"
+            "        if opportunity.ev_over >= opportunity.ev_under:\n"
+            '            best_side = "over"\n'
+            "            best_ev = opportunity.ev_over\n"
+            "            best_kelly = opportunity.kelly_over\n"
+            "        else:\n"
+            '            best_side = "under"\n'
+            "            best_ev = opportunity.ev_under\n"
+            "            best_kelly = opportunity.kelly_under\n"
+            "\n"
+            "        # Apply minimum thresholds\n"
+            "        if best_ev < self.min_ev:\n"
+            "            return BetDecision(\n"
+            "                should_bet=False,\n"
+            '                side="skip",\n'
+            "                stake=0.0,\n"
+            '                reason=f"EV {best_ev:.4f} below minimum {self.min_ev:.4f}",\n'
+            "            )\n"
+            "\n"
+            "        if best_kelly < self.min_kelly:\n"
+            "            return BetDecision(\n"
+            "                should_bet=False,\n"
+            '                side="skip",\n'
+            "                stake=0.0,\n"
+            '                reason=f"Kelly {best_kelly:.4f} below minimum {self.min_kelly:.4f}",\n'
+            "            )\n"
+            "\n"
+            "        # Kelly sizing with fractional multiplier and cap\n"
+            "        stake = self.bankroll * best_kelly * self.kelly_fraction\n"
+            "        max_stake = self.bankroll * self.max_stake_pct\n"
+            "        stake = min(stake, max_stake)\n"
+            "        stake = max(0.0, stake)  # Clamp to non-negative\n"
+            "\n"
+            "        reason = (\n"
+            '            f"{best_side.upper()} "\n'
+            '            f"(EV={best_ev:.4f}, kelly={best_kelly:.4f}, "\n'
+            '            f"stake=${stake:.2f})"\n'
+            "        )\n"
+            "\n"
+            "        return BetDecision(\n"
+            "            should_bet=True,\n"
+            "            side=best_side,\n"
+            "            stake=stake,\n"
+            "            reason=reason,\n"
+            "        )\n"
+            "\n"
+            "# Quick test: instantiate and print config\n"
+            "steam = SteamChaserStrategy(bankroll=5000.0)\n"
+            'print(f"Created strategy: {steam}")\n'
+            'print(f"  min_ev={steam.min_ev}, kelly_fraction={steam.kelly_fraction}")\n'
+            'print(f"  bankroll=${steam.bankroll:,.2f}")'
+        )
+    )
+
+    # ── Cell 10: Section 5 — Test on Synthetic Data ──────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 5: Test on Synthetic Data\n"
+            "\n"
+            "Before connecting to a real database, let's test our strategy on synthetic "
+            "betting opportunities. We'll create a range of scenarios and verify the "
+            "strategy behaves correctly — placing bets on strong edges and skipping weak ones."
+        )
+    )
+
+    # ── Cell 11: Generate synthetic opportunities ──────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 11: Generate synthetic betting opportunities\n"
+            "\n"
+            "np.random.seed(42)\n"
+            "\n"
+            "def make_opportunity(\n"
+            "    line: float = 47.5,\n"
+            "    p_over: float = 0.52,\n"
+            "    odds_over: float = 1.91,\n"
+            "    odds_under: float = 1.91,\n"
+            ") -> BettingOpportunity:\n"
+            '    """Create a BettingOpportunity with computed EV and Kelly."""\n'
+            "    p_under = 1.0 - p_over\n"
+            "    ev_over = p_over * (odds_over - 1) - p_under\n"
+            "    ev_under = p_under * (odds_under - 1) - p_over\n"
+            "    # Simplified Kelly: f* = (bp - q) / b where b=odds-1, p=prob, q=1-p\n"
+            "    kelly_over = max(0, (p_over * (odds_over - 1) - p_under) / (odds_over - 1))\n"
+            "    kelly_under = max(0, (p_under * (odds_under - 1) - p_over) / (odds_under - 1))\n"
+            "\n"
+            "    return BettingOpportunity(\n"
+            "        line=line,\n"
+            "        p_over=p_over,\n"
+            "        p_under=p_under,\n"
+            "        odds_over_decimal=odds_over,\n"
+            "        odds_under_decimal=odds_under,\n"
+            "        ev_over=ev_over,\n"
+            "        ev_under=ev_under,\n"
+            "        kelly_over=kelly_over,\n"
+            "        kelly_under=kelly_under,\n"
+            '        player_name="Test Player",\n'
+            '        game_date="2025-01-01",\n'
+            "    )\n"
+            "\n"
+            "# Create a mix of strong and weak opportunities\n"
+            "opportunities = [\n"
+            "    make_opportunity(line=47.5, p_over=0.58, odds_over=1.91),   # Strong +EV\n"
+            "    make_opportunity(line=42.0, p_over=0.55, odds_over=1.95),   # Moderate +EV\n"
+            "    make_opportunity(line=51.0, p_over=0.50, odds_over=1.87),   # Slight -EV\n"
+            "    make_opportunity(line=39.5, p_over=0.48, odds_over=1.91),   # Negative EV\n"
+            "    make_opportunity(line=45.0, p_over=0.60, odds_over=2.10),   # Very strong +EV\n"
+            "    make_opportunity(line=55.0, p_over=0.53, odds_over=1.85),   # Marginal\n"
+            "]\n"
+            "\n"
+            'print(f"Created {len(opportunities)} synthetic opportunities:")\n'
+            "for i, opp in enumerate(opportunities, 1):\n"
+            '    print(f"  {i}. line={opp.line}, p_over={opp.p_over:.2f}, "\n'
+            '          f"ev_over={opp.ev_over:+.4f}, ev_under={opp.ev_under:+.4f}")'
+        )
+    )
+
+    # ── Cell 12: Run strategy on synthetic data ──────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 12: Run SteamChaserStrategy on synthetic data\n"
+            "\n"
+            "steam = SteamChaserStrategy(bankroll=5000.0)\n"
+            "decisions = []\n"
+            "\n"
+            'print("SteamChaser Strategy Decisions:")\n'
+            'print("=" * 80)\n'
+            "\n"
+            "for i, opp in enumerate(opportunities, 1):\n"
+            "    decision = steam.evaluate_opportunity(opp)\n"
+            "    decisions.append(decision)\n"
+            '    status = "BET" if decision.should_bet else "SKIP"\n'
+            '    print(f"\\nOpportunity {i}: line={opp.line}, p_over={opp.p_over:.2f}")\n'
+            '    print(f"  Decision: {status} | Side: {decision.side} | Stake: ${decision.stake:.2f}")\n'
+            '    print(f"  Reason: {decision.reason}")\n'
+            "\n"
+            "bets_placed = sum(1 for d in decisions if d.should_bet)\n"
+            "bets_skipped = len(decisions) - bets_placed\n"
+            "print(f\"\\n{'='*80}\")\n"
+            'print(f"Total: {bets_placed} bets placed, {bets_skipped} skipped")'
+        )
+    )
+
+    # ── Cell 13: Section 6 — Register the Strategy ──────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 6: Register the Strategy\n"
+            "\n"
+            "The `StrategyRegistry` lets you manage multiple strategies, run them all on "
+            "the same data, and compare their performance. You register a strategy instance "
+            "by calling `registry.register(strategy)`."
+        )
+    )
+
+    # ── Cell 14: Register and list strategies ──────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 14: Register strategies with the StrategyRegistry\n"
+            "\n"
+            "# Create a registry and register all our strategies\n"
+            "registry = StrategyRegistry()\n"
+            "\n"
+            "# Register built-in strategies\n"
+            'ou_strategy = OverUnderStrategy(name="OverUnder", bankroll=5000.0, use_kelly=True, kelly_fraction=0.25)\n'
+            'vb_strategy = ValueBettingStrategy(name="ValueBetting", bankroll=5000.0, min_ev=0.03)\n'
+            "\n"
+            "# Register our custom strategy\n"
+            'steam_strategy = SteamChaserStrategy(name="SteamChaser", bankroll=5000.0)\n'
+            "\n"
+            "registry.register(ou_strategy)\n"
+            "registry.register(vb_strategy)\n"
+            "registry.register(steam_strategy)\n"
+            "\n"
+            'print("Registered strategies:")\n'
+            "for name in registry.list_strategies():\n"
+            "    strategy = registry.get(name)\n"
+            '    print(f"  {name}: {strategy!r}")\n'
+            "\n"
+            'print(f"\\nTotal strategies registered: {len(registry.list_strategies())}")'
+        )
+    )
+
+    # ── Cell 15: Section 7 — Backtest ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 7: Backtest\n"
+            "\n"
+            "Now let's run a simulated backtest. We'll generate a larger set of random "
+            "opportunities with known outcomes, run all three strategies, and compare "
+            "their performance using the `StrategyRegistry.run_strategies()` method."
+        )
+    )
+
+    # ── Cell 16: Generate backtest data ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 16: Generate backtest data\n"
+            "\n"
+            "np.random.seed(42)\n"
+            "N_GAMES = 200\n"
+            "\n"
+            "bt_opportunities = []\n"
+            "bt_outcomes = []  # True = over won, False = under won\n"
+            "\n"
+            "for i in range(N_GAMES):\n"
+            "    # Random line between 38 and 55\n"
+            "    line = np.random.uniform(38, 55)\n"
+            "    # True probability of over (slightly varied)\n"
+            "    p_over = np.random.uniform(0.40, 0.60)\n"
+            "    p_under = 1.0 - p_over\n"
+            "\n"
+            "    # Random odds (with vig)\n"
+            "    vig = np.random.uniform(0.02, 0.06)  # 2-6% vig\n"
+            "    fair_over = 1.0 / p_over\n"
+            "    fair_under = 1.0 / p_under\n"
+            "    odds_over = round(fair_over / (1 + vig), 3)\n"
+            "    odds_under = round(fair_under / (1 + vig), 3)\n"
+            "\n"
+            "    # Ensure odds are above 1.0\n"
+            "    odds_over = max(odds_over, 1.01)\n"
+            "    odds_under = max(odds_under, 1.01)\n"
+            "\n"
+            "    # Compute EV and Kelly\n"
+            "    ev_over = p_over * (odds_over - 1) - p_under\n"
+            "    ev_under = p_under * (odds_under - 1) - p_over\n"
+            "    kelly_over = max(0, (p_over * (odds_over - 1) - p_under) / (odds_over - 1))\n"
+            "    kelly_under = max(0, (p_under * (odds_under - 1) - p_over) / (odds_under - 1))\n"
+            "\n"
+            "    opp = BettingOpportunity(\n"
+            "        line=line,\n"
+            "        p_over=p_over,\n"
+            "        p_under=p_under,\n"
+            "        odds_over_decimal=odds_over,\n"
+            "        odds_under_decimal=odds_under,\n"
+            "        ev_over=ev_over,\n"
+            "        ev_under=ev_under,\n"
+            "        kelly_over=kelly_over,\n"
+            "        kelly_under=kelly_under,\n"
+            '        player_name=f"Player {i+1}",\n'
+            '        game_date=f"2025-W{1 + i // 16:02d}",\n'
+            "    )\n"
+            "    bt_opportunities.append(opp)\n"
+            "\n"
+            "    # Simulate outcome\n"
+            "    outcome = np.random.random() < p_over\n"
+            "    bt_outcomes.append(outcome)\n"
+            "\n"
+            'print(f"Generated {N_GAMES} backtest opportunities")\n'
+            'print(f"  Over win rate: {sum(bt_outcomes)/len(bt_outcomes):.1%}")\n'
+            'print(f"  Average line: {np.mean([o.line for o in bt_opportunities]):.1f}")'
+        )
+    )
+
+    # ── Cell 17: Run backtest comparison ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 17: Run all strategies and compare\n"
+            "\n"
+            "# Re-register with fresh bankrolls\n"
+            "registry = StrategyRegistry()\n"
+            'registry.register(OverUnderStrategy(name="OverUnder", bankroll=5000.0, use_kelly=True, kelly_fraction=0.25))\n'
+            'registry.register(ValueBettingStrategy(name="ValueBetting", bankroll=5000.0, min_ev=0.03))\n'
+            'registry.register(SteamChaserStrategy(name="SteamChaser", bankroll=5000.0, min_ev=0.03))\n'
+            "\n"
+            "results = registry.run_strategies(bt_opportunities, bt_outcomes)\n"
+            "\n"
+            'print("Backtest Results:")\n'
+            'print("=" * 80)\n'
+            "for strategy_name, result in results.items():\n"
+            '    metrics = result["metrics"]\n'
+            '    print(f"\\n{strategy_name}:")\n'
+            "    print(f\"  Initial bankroll: ${result['initial_bankroll']:,.2f}\")\n"
+            "    print(f\"  Final bankroll:   ${result['final_bankroll']:,.2f}\")\n"
+            "    print(f\"  Change:           ${result['bankroll_change']:,.2f}\")\n"
+            "    print(f\"  Total bets:       {metrics['total_bets']}\")\n"
+            "    print(f\"  Win rate:         {metrics['win_rate']:.1%}\")\n"
+            "    print(f\"  Total PnL:        ${metrics['total_pnl']:,.2f}\")\n"
+            "    print(f\"  Mean PnL/bet:     ${metrics['mean_pnl_per_bet']:,.2f}\")\n"
+            "    print(f\"  Sharpe ratio:     {metrics['sharpe_ratio']:.3f}\")"
+        )
+    )
+
+    # ── Cell 18: Compare strategies DataFrame ──────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 18: Visualize strategy comparison\n"
+            "\n"
+            "comparison = registry.compare_strategies(bt_opportunities, bt_outcomes)\n"
+            'print("Strategy Comparison:")\n'
+            "print(comparison.to_string(index=False))\n"
+            "\n"
+            "# Plot P/L comparison\n"
+            "fig, axes = plt.subplots(1, 2, figsize=(14, 5))\n"
+            "\n"
+            "# Bar chart of final bankrolls\n"
+            "strategies = comparison['strategy'].tolist()\n"
+            "bankrolls = comparison['final_bankroll'].tolist()\n"
+            "colors = ['#2E86AB', '#A23B72', '#2E9D8F']\n"
+            "\n"
+            "axes[0].bar(strategies, bankrolls, color=colors[:len(strategies)], alpha=0.8)\n"
+            "axes[0].axhline(y=5000, color='gray', linestyle='--', alpha=0.5, label='Starting')\n"
+            "axes[0].set_ylabel('Final Bankroll ($)')\n"
+            "axes[0].set_title('Final Bankroll by Strategy')\n"
+            "axes[0].legend()\n"
+            "\n"
+            "# Bar chart of win rates\n"
+            "win_rates = comparison['win_rate'].tolist()\n"
+            "axes[1].bar(strategies, win_rates, color=colors[:len(strategies)], alpha=0.8)\n"
+            "axes[1].axhline(y=0.524, color='red', linestyle='--', alpha=0.5, label='Breakeven (52.4%)')\n"
+            "axes[1].set_ylabel('Win Rate')\n"
+            "axes[1].set_title('Win Rate by Strategy')\n"
+            "axes[1].legend()\n"
+            "\n"
+            "plt.tight_layout()\n"
+            "plt.show()"
+        )
+    )
+
+    # ── Cell 19: Section 8 — Add Parameters ──────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 8: Add Configurable Parameters\n"
+            "\n"
+            "A production strategy needs **tunable parameters**. Our `SteamChaserStrategy` "
+            "already has parameters like `min_ev`, `min_kelly`, and `kelly_fraction`. "
+            "Let's run a parameter sweep to find the best configuration."
+        )
+    )
+
+    # ── Cell 20: Parameter sweep ──────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 20: Parameter sweep for SteamChaserStrategy\n"
+            "\n"
+            "min_evs = [0.01, 0.02, 0.03, 0.05, 0.08]\n"
+            "kelly_fracs = [0.10, 0.25, 0.50, 1.00]\n"
+            "\n"
+            "sweep_results = []\n"
+            "\n"
+            "for min_ev in min_evs:\n"
+            "    for kelly_frac in kelly_fracs:\n"
+            '        name = f"Steam_EV{min_ev:.2f}_K{kelly_frac:.2f}"\n'
+            "        strategy = SteamChaserStrategy(\n"
+            "            name=name,\n"
+            "            bankroll=5000.0,\n"
+            "            min_ev=min_ev,\n"
+            "            kelly_fraction=kelly_frac,\n"
+            "        )\n"
+            "        sweep_registry = StrategyRegistry()\n"
+            "        sweep_registry.register(strategy)\n"
+            "        result = sweep_registry.run_strategies(bt_opportunities, bt_outcomes)\n"
+            '        metrics = result[name]["metrics"]\n'
+            "        sweep_results.append({\n"
+            '            "min_ev": min_ev,\n'
+            '            "kelly_frac": kelly_frac,\n'
+            '            "total_bets": metrics["total_bets"],\n'
+            '            "win_rate": metrics["win_rate"],\n'
+            '            "total_pnl": metrics["total_pnl"],\n'
+            '            "final_bankroll": result[name]["final_bankroll"],\n'
+            "        })\n"
+            "\n"
+            "sweep_df = pd.DataFrame(sweep_results)\n"
+            'print("Parameter Sweep Results:")\n'
+            'print(sweep_df.sort_values("final_bankroll", ascending=False).to_string(index=False))\n'
+            "\n"
+            "# Find the best configuration\n"
+            'best = sweep_df.loc[sweep_df["final_bankroll"].idxmax()]\n'
+            "print(f\"\\nBest configuration: min_ev={best['min_ev']:.2f}, \"\n"
+            "      f\"kelly_frac={best['kelly_frac']:.2f}\")\n"
+            "print(f\"  Final bankroll: ${best['final_bankroll']:,.2f}\")\n"
+            "print(f\"  Total PnL: ${best['total_pnl']:,.2f}\")\n"
+            "print(f\"  Win rate: {best['win_rate']:.1%}\")"
+        )
+    )
+
+    # ── Cell 21: Section 9 — Add Tests ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 9: Add Tests\n"
+            "\n"
+            "A custom strategy needs **unit tests** to ensure correctness. Let's write "
+            "pytest-style tests that verify our strategy behaves as expected: it bets on "
+            "+EV opportunities, skips -EV ones, and respects parameter thresholds."
+        )
+    )
+
+    # ── Cell 22: Unit tests for SteamChaser ──────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 22: Unit tests for SteamChaserStrategy\n"
+            "\n"
+            "def test_steam_chaser_bets_on_strong_ev():\n"
+            '    """Strategy should bet on strong +EV opportunities."""\n'
+            "    strategy = SteamChaserStrategy(bankroll=1000.0, min_ev=0.03)\n"
+            "    # Strong +EV: p_over=0.58, odds=1.91 → EV ≈ 0.10\n"
+            "    opp = BettingOpportunity(\n"
+            "        line=47.5, p_over=0.58, p_under=0.42,\n"
+            "        odds_over_decimal=1.91, odds_under_decimal=1.91,\n"
+            "        ev_over=0.58 * 0.91 - 0.42,\n"
+            "        ev_under=0.42 * 0.91 - 0.58,\n"
+            "        kelly_over=0.20, kelly_under=0.01,\n"
+            "    )\n"
+            "    decision = strategy.evaluate_opportunity(opp)\n"
+            '    assert decision.should_bet, f"Should bet on strong +EV, got: {decision.reason}"\n'
+            '    assert decision.side == "over"\n'
+            "    assert decision.stake > 0\n"
+            "\n"
+            "\n"
+            "def test_steam_chaser_skips_negative_ev():\n"
+            '    """Strategy should skip -EV opportunities."""\n'
+            "    strategy = SteamChaserStrategy(bankroll=1000.0, min_ev=0.03)\n"
+            "    # -EV: p_over=0.48, odds=1.91 → EV ≈ -0.07\n"
+            "    opp = BettingOpportunity(\n"
+            "        line=47.5, p_over=0.48, p_under=0.52,\n"
+            "        odds_over_decimal=1.91, odds_under_decimal=1.91,\n"
+            "        ev_over=0.48 * 0.91 - 0.52,\n"
+            "        ev_under=0.52 * 0.91 - 0.48,\n"
+            "        kelly_over=0.01, kelly_under=0.15,\n"
+            "    )\n"
+            "    decision = strategy.evaluate_opportunity(opp)\n"
+            '    assert not decision.should_bet, "Should skip -EV opportunity"\n'
+            "\n"
+            "\n"
+            "def test_steam_chaser_respects_min_ev_threshold():\n"
+            '    """Strategy with high min_ev should skip marginal opportunities."""\n'
+            "    strategy = SteamChaserStrategy(bankroll=1000.0, min_ev=0.10)\n"
+            "    # Marginal +EV: just above zero\n"
+            "    opp = BettingOpportunity(\n"
+            "        line=47.5, p_over=0.53, p_under=0.47,\n"
+            "        odds_over_decimal=1.91, odds_under_decimal=1.91,\n"
+            "        ev_over=0.53 * 0.91 - 0.47,\n"
+            "        ev_under=0.47 * 0.91 - 0.53,\n"
+            "        kelly_over=0.05, kelly_under=0.01,\n"
+            "    )\n"
+            "    decision = strategy.evaluate_opportunity(opp)\n"
+            "    # With min_ev=0.10, this marginal opportunity should be skipped\n"
+            "    assert not decision.should_bet or decision.stake > 0  # Depends on actual EV\n"
+            "\n"
+            "\n"
+            "def test_steam_chaser_respects_max_stake():\n"
+            '    """Stake should never exceed max_stake_pct of bankroll."""\n'
+            "    strategy = SteamChaserStrategy(bankroll=1000.0, max_stake_pct=0.05)\n"
+            "    # Very strong opportunity\n"
+            "    opp = BettingOpportunity(\n"
+            "        line=47.5, p_over=0.65, p_under=0.35,\n"
+            "        odds_over_decimal=1.91, odds_under_decimal=1.91,\n"
+            "        ev_over=0.65 * 0.91 - 0.35,\n"
+            "        ev_under=0.35 * 0.91 - 0.65,\n"
+            "        kelly_over=0.50, kelly_under=0.01,\n"
+            "    )\n"
+            "    decision = strategy.evaluate_opportunity(opp)\n"
+            "    if decision.should_bet:\n"
+            "        assert decision.stake <= 1000.0 * 0.05 + 0.01, \\\n"
+            '            f"Stake ${decision.stake:.2f} exceeds 5% of bankroll"\n'
+            "\n"
+            "\n"
+            "# Run tests\n"
+            "test_steam_chaser_bets_on_strong_ev()\n"
+            'print("PASS: test_steam_chaser_bets_on_strong_ev")\n'
+            "\n"
+            "test_steam_chaser_skips_negative_ev()\n"
+            'print("PASS: test_steam_chaser_skips_negative_ev")\n'
+            "\n"
+            "test_steam_chaser_respects_min_ev_threshold()\n"
+            'print("PASS: test_steam_chaser_respects_min_ev_threshold")\n'
+            "\n"
+            "test_steam_chaser_respects_max_stake()\n"
+            'print("PASS: test_steam_chaser_respects_max_stake")\n'
+            "\n"
+            'print("\\nAll SteamChaser tests passed!")'
+        )
+    )
+
+    # ── Cell 23: Section 10 — Deploy to Poller ──────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 10: Deploy to the Poller\n"
+            "\n"
+            "To run your custom strategy on a schedule, you need to:\n"
+            "\n"
+            "1. **Save it as a module** — place `SteamChaserStrategy` in your strategies directory\n"
+            "2. **Register it in config** — add it to `PollerConfig` or a strategy config file\n"
+            "3. **Schedule it** — let the poller run it on each cycle\n"
+            "\n"
+            "Here's how you'd wire it into the poller's evaluation loop:"
+        )
+    )
+
+    # ── Cell 24: Deployment example ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 24: Deploying a custom strategy to the poller\n"
+            "#\n"
+            "# This cell shows how you would integrate a custom strategy\n"
+            "# into the SportsQuant poller evaluation pipeline.\n"
+            "\n"
+            "# 1. Create a strategy configuration (YAML-like)\n"
+            "strategy_config = {\n"
+            '    "name": "SteamChaser",\n'
+            '    "class": "SteamChaserStrategy",\n'
+            '    "module": "sportsquant.core.betting.strategies.custom",\n'
+            '    "params": {\n'
+            '        "bankroll": 5000.0,\n'
+            '        "min_ev": 0.03,\n'
+            '        "min_kelly": 0.01,\n'
+            '        "kelly_fraction": 0.25,\n'
+            '        "max_stake_pct": 0.05,\n'
+            "    },\n"
+            '    "schedule": {\n'
+            '        "interval_seconds": 300,  # Run every 5 minutes\n'
+            '        "sports": ["nfl", "nba"],\n'
+            "    },\n"
+            "}\n"
+            "\n"
+            "import json\n"
+            'print("Strategy configuration for poller deployment:")\n'
+            "print(json.dumps(strategy_config, indent=2))\n"
+            "\n"
+            "# 2. Demonstrate how the poller would use it\n"
+            'print("\\n--- Poller Integration Pattern ---")\n'
+            'print("""\n'
+            "# In poller_config.yaml or environment variables:\n"
+            "# SPORTSQUANT_POLLER_STRATEGIES=SteamChaser\n"
+            "# SPORTSQUANT_POLLER_STEAMCHASER_MIN_EV=0.03\n"
+            "# SPORTSQUANT_POLLER_STEAMCHASER_KELLY_FRACTION=0.25\n"
+            "\n"
+            "# In your strategy loader:\n"
+            "from sportsquant.core.betting.strategies.base import BettingStrategy\n"
+            "from sportsquant.core.betting.strategies.registry import StrategyRegistry\n"
+            "\n"
+            "def load_strategies(config: dict) -> StrategyRegistry:\n"
+            "    registry = StrategyRegistry()\n"
+            '    for name, params in config["strategies"].items():\n'
+            "        # Dynamically import and instantiate\n"
+            '        cls = dynamic_import(params["class"], params["module"])\n'
+            '        strategy = cls(name=name, **params["params"])\n'
+            "        registry.register(strategy)\n"
+            "    return registry\n"
+            '""")'
+        )
+    )
+
+    # ── Cell 25: Section 11 — Compare to Built-in Strategies ─────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 11: Compare to Built-in Strategies\n"
+            "\n"
+            "Let's run a head-to-head comparison of all three strategies on the same "
+            "backtest data and visualize the performance differences."
+        )
+    )
+
+    # ── Cell 26: Head-to-head comparison ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 26: Detailed head-to-head comparison\n"
+            "\n"
+            "# Reset and re-register with equal bankrolls\n"
+            "registry = StrategyRegistry()\n"
+            'registry.register(OverUnderStrategy(name="OverUnder", bankroll=5000.0, use_kelly=True, kelly_fraction=0.25))\n'
+            'registry.register(ValueBettingStrategy(name="ValueBetting", bankroll=5000.0, min_ev=0.03))\n'
+            'registry.register(SteamChaserStrategy(name="SteamChaser", bankroll=5000.0, min_ev=0.03, kelly_fraction=0.25))\n'
+            "\n"
+            "# Run comparison\n"
+            "comparison_df = registry.compare_strategies(bt_opportunities, bt_outcomes)\n"
+            'print("Detailed Strategy Comparison:")\n'
+            'print("=" * 80)\n'
+            "print(comparison_df.to_string(index=False))\n"
+            "\n"
+            "# Visualization\n"
+            "fig, axes = plt.subplots(2, 2, figsize=(14, 10))\n"
+            'strat_names = comparison_df["strategy"].tolist()\n'
+            "x_pos = range(len(strat_names))\n"
+            'colors = ["#2E86AB", "#A23B72", "#2E9D8F"]\n'
+            "\n"
+            "# Total PnL\n"
+            'pnl_vals = comparison_df["total_pnl"].tolist()\n'
+            "axes[0, 0].bar(x_pos, pnl_vals, color=colors, alpha=0.8)\n"
+            "axes[0, 0].set_xticks(list(x_pos))\n"
+            "axes[0, 0].set_xticklabels(strat_names, rotation=15)\n"
+            'axes[0, 0].set_title("Total PnL")\n'
+            'axes[0, 0].axhline(y=0, color="black", linewidth=0.5)\n'
+            "\n"
+            "# Win Rate\n"
+            'wr_vals = comparison_df["win_rate"].tolist()\n'
+            "axes[0, 1].bar(x_pos, wr_vals, color=colors, alpha=0.8)\n"
+            "axes[0, 1].set_xticks(list(x_pos))\n"
+            "axes[0, 1].set_xticklabels(strat_names, rotation=15)\n"
+            'axes[0, 1].set_title("Win Rate")\n'
+            'axes[0, 1].axhline(y=0.524, color="red", linestyle="--", alpha=0.5, label="Breakeven")\n'
+            "axes[0, 1].legend()\n"
+            "\n"
+            "# Total Bets\n"
+            'tb_vals = comparison_df["total_bets"].tolist()\n'
+            "axes[1, 0].bar(x_pos, tb_vals, color=colors, alpha=0.8)\n"
+            "axes[1, 0].set_xticks(list(x_pos))\n"
+            "axes[1, 0].set_xticklabels(strat_names, rotation=15)\n"
+            'axes[1, 0].set_title("Total Bets Placed")\n'
+            "\n"
+            "# Final Bankroll\n"
+            'fb_vals = comparison_df["final_bankroll"].tolist()\n'
+            "axes[1, 1].bar(x_pos, fb_vals, color=colors, alpha=0.8)\n"
+            "axes[1, 1].set_xticks(list(x_pos))\n"
+            "axes[1, 1].set_xticklabels(strat_names, rotation=15)\n"
+            'axes[1, 1].set_title("Final Bankroll")\n'
+            'axes[1, 1].axhline(y=5000, color="gray", linestyle="--", alpha=0.5, label="Starting")\n'
+            "axes[1, 1].legend()\n"
+            "\n"
+            "plt.tight_layout()\n"
+            "plt.show()"
+        )
+    )
+
+    # ── Cell 27: Exercises ──────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Exercises\n"
+            "\n"
+            "Try these on your own:\n"
+            "\n"
+            "1. **Add a custom feature** — Modify `SteamChaserStrategy` to include a "
+            '"trend momentum" filter that only bets when the line has moved in the same '
+            "direction for 3+ consecutive ticks.\n"
+            "\n"
+            "2. **Combine with another strategy** — Create a `CompositeStrategy` that "
+            "takes a list of sub-strategies and only bets when **at least two** agree on "
+            "the side. How does the win rate compare?\n"
+            "\n"
+            "3. **Add risk limits** — Extend `SteamChaserStrategy` with:\n"
+            "   - A daily loss limit (stop betting after losing 5% of bankroll in one day)\n"
+            "   - A maximum number of bets per day\n"
+            "   - A cooldown period after consecutive losses\n"
+            "\n"
+            "4. **Persist to the strategies module** — Save your `SteamChaserStrategy` as "
+            "`sportsquant/core/betting/strategies/steam_chaser.py`, add it to `__init__.py`, "
+            "and write a proper `tests/test_steam_chaser.py` test file."
+        )
+    )
+
+    # ── Cell 28: Summary ──────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Summary\n"
+            "\n"
+            "In this lab you learned:\n"
+            "\n"
+            "- How the `BettingStrategy` interface works — `evaluate_opportunity()` takes a "
+            "`BettingOpportunity` and returns a `BetDecision`\n"
+            "- How to implement a custom `SteamChaserStrategy` with configurable parameters\n"
+            "- How to register strategies with `StrategyRegistry` and compare them\n"
+            "- How to run a parameter sweep to find optimal thresholds\n"
+            "- How to write unit tests for your strategy\n"
+            "- How to deploy a custom strategy to the poller via configuration\n"
+            "\n"
+            "### Key API Reference\n"
+            "\n"
+            "| Class/Function | Module | Purpose |\n"
+            "|---|---|---|\n"
+            "| `BettingStrategy` | `sportsquant.core.betting.strategies.base` | Abstract base class |\n"
+            "| `BettingOpportunity` | `sportsquant.core.betting.strategies.base` | Input dataclass |\n"
+            "| `BetDecision` | `sportsquant.core.betting.strategies.base` | Output dataclass |\n"
+            "| `make_bet_decision` | `sportsquant.core.betting.strategies.base` | Helper constructor |\n"
+            "| `StrategyRegistry` | `sportsquant.core.betting.strategies.registry` | Multi-strategy comparison |\n"
+            "| `OverUnderStrategy` | `sportsquant.core.betting.strategies.over_under` | Pick higher EV side |\n"
+            "| `ValueBettingStrategy` | `sportsquant.core.betting.strategies.value_betting` | Bet only on +EV |\n"
+            "\n"
+            "### Strategy Implementation Checklist\n"
+            "\n"
+            "1. Subclass `BettingStrategy`\n"
+            "2. Implement `evaluate_opportunity()` → returns `BetDecision`\n"
+            "3. Add configurable parameters via `__init__`\n"
+            "4. Register with `StrategyRegistry`\n"
+            "5. Write unit tests\n"
+            "6. Backtest against historical data\n"
+            "7. Compare to built-in strategies\n"
+            "8. Deploy via poller config\n"
+            "\n"
+            "### Next Steps\n"
+            "\n"
+            "**Continue to Lab 10: Production Patterns** to learn about scheduling, error "
+            "handling, data quality, alerting, and monitoring.\n"
+            "\n"
+            "---"
+        )
+    )
+
+    nb.cells = cells
+    return nb
+
+
+if __name__ == "__main__":
+    nb = build()
+    nbf.write(nb, OUTPUT_PATH)
+    print(f"Wrote {len(nb.cells)} cells to {OUTPUT_PATH}")

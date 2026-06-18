@@ -1,0 +1,1107 @@
+"""Build script for Lab 07: Ratings Systems.
+
+Generates ``07_ratings_systems.ipynb`` using nbformat. Run this script to
+produce the notebook, then open it in Jupyter to execute the cells.
+
+Usage::
+
+    cd /home/jcharles/Projects/Infrastructure/sportsquant
+    uv run python labs/build_lab_07.py
+"""
+
+from __future__ import annotations
+
+import nbformat as nbf
+
+OUTPUT_PATH = "labs/07_ratings_systems.ipynb"
+
+
+def build() -> nbf.NotebookNode:
+    """Construct the Lab 07 notebook programmatically."""
+    nb = nbf.v4.new_notebook()
+    nb.metadata.update(
+        {
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3",
+            },
+            "language_info": {
+                "name": "python",
+                "version": "3.12.0",
+            },
+        }
+    )
+
+    cells: list[nbf.NotebookNode] = []
+
+    # ── Cell 1: Title ──────────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "# Lab 07: Ratings Systems\n"
+            "\n"
+            "This lab walks you through four popular rating systems used in sports analytics: "
+            "**Elo**, **Massey**, **PageRank**, and **Glicko**. Each captures team strength "
+            "from a different angle. By the end you will:\n"
+            "\n"
+            "- Understand what a rating system is and when to use each method\n"
+            "- Implement Elo ratings with configurable K-factor\n"
+            "- Compute Massey ratings via linear algebra\n"
+            "- Apply PageRank to game results as a directed graph\n"
+            "- Track uncertainty with Glicko's rating deviation (RD)\n"
+            "- Compare all four systems side by side\n"
+            "- Backtest each system on historical (or synthetic) game data\n"
+            "\n"
+            "---"
+        )
+    )
+
+    # ── Cell 2: Prerequisites ───────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "## Prerequisites\n"
+            "\n"
+            "- **Labs 01-06 completed** — you understand the SportsQuant data pipeline\n"
+            "- **Linear algebra basics** — matrix inversion, solving Ax = b\n"
+            "- **Probability basics** — Bayes' theorem, normal distributions\n"
+            "\n"
+            "### Rating Systems Overview\n"
+            "\n"
+            "| System | Core Idea | Best For | Output |\n"
+            "|---|---|---|---|\n"
+            "| **Elo** | Update after each game | Chess, 1v1 sports | Single rating per team |\n"
+            "| **Massey** | Solve linear system | League seasons | Offensive + defensive ratings |\n"
+            "| **PageRank** | Transitive wins | College sports, polls | Single rating per team |\n"
+            "| **Glicko** | Elo + uncertainty | Small samples, new teams | Rating ± RD per team |"
+        )
+    )
+
+    # ── Cell 3: Section 1 — Setup ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 1: Setup — Imports and Synthetic Data\n"
+            "\n"
+            "We import the SportsQuant rating modules and set up synthetic game data for "
+            "when the database doesn't have enough results yet. All four rating systems will "
+            "operate on the same game dataset so we can compare fairly."
+        )
+    )
+
+    # ── Cell 4: Imports ──────────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 4: Core imports\n"
+            "import math\n"
+            "from dataclasses import dataclass, field\n"
+            "from typing import Optional\n"
+            "\n"
+            "import numpy as np\n"
+            "import pandas as pd\n"
+            "import matplotlib.pyplot as plt\n"
+            "\n"
+            "from sportsquant.models.ratings.massey_ratings import MasseyRatings, MasseyRatingsConfig\n"
+            "from sportsquant.models.ratings.pagerank_ratings import PageRankRatings\n"
+            "\n"
+            "# Enable nested event loops in Jupyter\n"
+            "import nest_asyncio\n"
+            "nest_asyncio.apply()\n"
+            "\n"
+            'print("Imports loaded successfully.")'
+        )
+    )
+
+    # ── Cell 5: Synthetic game data ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 5: Generate synthetic game results\n"
+            "#\n"
+            "# We simulate a 10-team league playing a round-robin schedule.\n"
+            '# Each team has a latent "true strength" that determines win probability.\n'
+            "\n"
+            "np.random.seed(42)\n"
+            "\n"
+            "TEAMS = [\n"
+            '    "KC", "BUF", "SF", "PHI", "DET",\n'
+            '    "DAL", "BAL", "MIA", "CLE", "CAR",\n'
+            "]\n"
+            "\n"
+            "# True strengths (higher = better team)\n"
+            "TRUE_STRENGTH = {\n"
+            '    "KC": 10.0, "BUF": 8.5, "SF": 7.0, "PHI": 6.5, "DET": 6.0,\n'
+            '    "DAL": 4.0, "BAL": 5.5, "MIA": 3.5, "CLE": 2.0, "CAR": 1.0,\n'
+            "}\n"
+            "\n"
+            "HOME_ADVANTAGE = 3.0  # points\n"
+            "\n"
+            "def generate_games(n_games: int = 200, seed: int = 42) -> pd.DataFrame:\n"
+            '    """Generate synthetic game results with realistic score distributions."""\n'
+            "    rng = np.random.default_rng(seed)\n"
+            "    records = []\n"
+            "    for _ in range(n_games):\n"
+            "        home = rng.choice(TEAMS)\n"
+            "        away = rng.choice([t for t in TEAMS if t != home])\n"
+            "        home_strength = TRUE_STRENGTH[home] + HOME_ADVANTAGE\n"
+            "        away_strength = TRUE_STRENGTH[away]\n"
+            "        margin = home_strength - away_strength + rng.normal(0, 4)\n"
+            "        home_score = max(7, int(22 + away_strength / 2 + rng.normal(0, 3)))\n"
+            "        away_score = max(7, int(22 + away_strength / 2 - margin / 2 + rng.normal(0, 3)))\n"
+            "        # Adjust scores to match margin\n"
+            "        actual_margin = home_score - away_score\n"
+            "        away_score += int(round(actual_margin - margin))\n"
+            "        away_score = max(7, away_score)\n"
+            "        winner = home if home_score > away_score else away\n"
+            "        loser = away if winner == home else home\n"
+            "        records.append({\n"
+            '            "HOME_TEAM": home,\n'
+            '            "AWAY_TEAM": away,\n'
+            '            "HOME_SCORE": home_score,\n'
+            '            "AWAY_SCORE": away_score,\n'
+            '            "WINNER": winner,\n'
+            '            "LOSER": loser,\n'
+            '            "WINNER_SCORE": max(home_score, away_score),\n'
+            '            "LOSER_SCORE": min(home_score, away_score),\n'
+            "        })\n"
+            "    return pd.DataFrame(records)\n"
+            "\n"
+            "games_df = generate_games(n_games=200)\n"
+            'print(f"Generated {len(games_df)} synthetic games")\n'
+            'print(f"\\nSample games:")\n'
+            "print(games_df.head(10).to_string(index=False))\n"
+            'print(f"\\nWin distribution:")\n'
+            'print(games_df["WINNER"].value_counts().sort_index())'
+        )
+    )
+
+    # ── Cell 6: Section 2 — What is a Rating System? ──────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 2: What Is a Rating System?\n"
+            "\n"
+            "A **rating system** assigns a numerical value to each team that represents its "
+            "strength. Higher ratings mean stronger teams. The goal is to produce ratings "
+            "that are **predictive** — if Team A has a higher rating than Team B, Team A "
+            "should win more often than not.\n"
+            "\n"
+            "### Four Approaches\n"
+            "\n"
+            "1. **Elo** — Iterative update after each game. Simple, well-known, "
+            "and widely used (chess, FIFA rankings). The K-factor controls how much "
+            "each game moves the rating.\n"
+            "\n"
+            "2. **Massey** — Solve a linear system `M·r = p` where `M` encodes who "
+            "played whom and `p` encodes point margins. Decomposes into "
+            "offensive/defensive components.\n"
+            "\n"
+            "3. **PageRank** — Treat games as a directed graph where wins are edges. "
+            "Iteratively propagate strength through the network. A win over a strong "
+            "team counts more than a win over a weak team.\n"
+            "\n"
+            "4. **Glicko** — Extends Elo by adding a **rating deviation (RD)** that "
+            "represents uncertainty. New teams start with high RD; as they play more "
+            "games, RD shrinks. This is crucial for small-sample situations.\n"
+            "\n"
+            "### When to Use What\n"
+            "\n"
+            "| Situation | Best System | Why |\n"
+            "|---|---|---|\n"
+            "| Head-to-head, sequential games | Elo | Simple, well-calibrated |\n"
+            "| Full season, need offense/defense split | Massey | Decomposes ratings |\n"
+            "| Transitive strength (A beat B beat C) | PageRank | Captures win quality |\n"
+            "| New teams, small samples | Glicko | Uncertainty quantification |"
+        )
+    )
+
+    # ── Cell 7: Section 3 — Elo Ratings ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 3: Elo Ratings\n"
+            "\n"
+            "The **Elo rating system** was developed by Arpad Elo for chess. "
+            "After each game, both teams' ratings are updated:\n"
+            "\n"
+            "```\n"
+            "expected_A = 1 / (1 + 10^((rating_B - rating_A) / 400))\n"
+            "new_rating_A = rating_A + K * (outcome_A - expected_A)\n"
+            "```\n"
+            "\n"
+            "- `K` is the **K-factor** (typically 20-40): higher K = more reactive to recent games\n"
+            "- `outcome_A` is 1 for win, 0 for loss, 0.5 for draw\n"
+            "- `expected_A` is the predicted win probability based on rating difference\n"
+            "\n"
+            "The 400 in the formula means a **400-point rating difference** corresponds to "
+            "a 10:1 expected win ratio (≈91% win probability)."
+        )
+    )
+
+    # ── Cell 8: Elo implementation ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 8: Elo rating system implementation\n"
+            "\n"
+            "@dataclass\n"
+            "class EloRating:\n"
+            '    """Simple Elo rating system.\n'
+            "\n"
+            "    Attributes:\n"
+            "        K: K-factor controlling rating volatility.\n"
+            "        initial_rating: Starting rating for new teams.\n"
+            "        home_advantage: Home field advantage in Elo points.\n"
+            '    """\n'
+            "    K: float = 32.0\n"
+            "    initial_rating: float = 1500.0\n"
+            "    home_advantage: float = 65.0  # ~3 points scaled to Elo\n"
+            "    ratings: dict = field(default_factory=dict)\n"
+            "    history: list = field(default_factory=list)\n"
+            "\n"
+            "    def get_rating(self, team: str) -> float:\n"
+            '        """Get current rating for a team."""\n'
+            "        return self.ratings.get(team, self.initial_rating)\n"
+            "\n"
+            "    def expected_score(self, rating_a: float, rating_b: float) -> float:\n"
+            '        """Calculate expected score (win probability) for team A."""\n'
+            "        return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / 400.0))\n"
+            "\n"
+            "    def update(self, home: str, away: str, home_score: int, away_score: int) -> None:\n"
+            '        """Update ratings after a game."""\n'
+            "        rating_home = self.get_rating(home) + self.home_advantage\n"
+            "        rating_away = self.get_rating(away)\n"
+            "\n"
+            "        expected_home = self.expected_score(rating_home, rating_away)\n"
+            "        expected_away = 1.0 - expected_home\n"
+            "\n"
+            "        if home_score > away_score:\n"
+            "            outcome_home = 1.0\n"
+            "        elif home_score < away_score:\n"
+            "            outcome_home = 0.0\n"
+            "        else:\n"
+            "            outcome_home = 0.5\n"
+            "        outcome_away = 1.0 - outcome_home\n"
+            "\n"
+            "        old_home = self.get_rating(home)\n"
+            "        old_away = self.get_rating(away)\n"
+            "\n"
+            "        self.ratings[home] = old_home + self.K * (outcome_home - expected_home)\n"
+            "        self.ratings[away] = old_away + self.K * (outcome_away - expected_away)\n"
+            "\n"
+            "        self.history.append({\n"
+            '            "home": home, "away": away,\n'
+            '            "home_score": home_score, "away_score": away_score,\n'
+            '            "home_rating_before": old_home,\n'
+            '            "away_rating_before": old_away,\n'
+            '            "home_rating_after": self.ratings[home],\n'
+            '            "away_rating_after": self.ratings[away],\n'
+            "        })\n"
+            "\n"
+            "    def win_probability(self, home: str, away: str) -> float:\n"
+            '        """Calculate home win probability."""\n'
+            "        r_home = self.get_rating(home) + self.home_advantage\n"
+            "        r_away = self.get_rating(away)\n"
+            "        return self.expected_score(r_home, r_away)\n"
+            "\n"
+            'print("EloRating class defined.")'
+        )
+    )
+
+    # ── Cell 9: Run Elo on synthetic data ──────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 9: Run Elo on synthetic game data\n"
+            "\n"
+            "elo = EloRating(K=32, initial_rating=1500, home_advantage=65)\n"
+            "\n"
+            "for _, game in games_df.iterrows():\n"
+            '    elo.update(game["HOME_TEAM"], game["AWAY_TEAM"], game["HOME_SCORE"], game["AWAY_SCORE"])\n'
+            "\n"
+            'print("Elo Ratings (K=32):")\n'
+            "print(f\"{'Team':<6} {'Rating':>8} {'True':>8}\")\n"
+            "print(f\"{'-'*6} {'-'*8} {'-'*8}\")\n"
+            "for team in sorted(TEAMS, key=lambda t: elo.get_rating(t), reverse=True):\n"
+            '    print(f"{team:<6} {elo.get_rating(team):>8.1f} {TRUE_STRENGTH[team]:>8.1f}")'
+        )
+    )
+
+    # ── Cell 10: Plot Elo evolution ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 10: Plot Elo rating evolution over games\n"
+            "\n"
+            "# Track ratings over time for each team\n"
+            "elo_track = {team: [] for team in TEAMS}\n"
+            "elo_track_temp = EloRating(K=32, initial_rating=1500, home_advantage=65)\n"
+            "\n"
+            "for _, game in games_df.iterrows():\n"
+            '    elo_track_temp.update(game["HOME_TEAM"], game["AWAY_TEAM"], game["HOME_SCORE"], game["AWAY_SCORE"])\n'
+            "    for team in TEAMS:\n"
+            "        elo_track[team].append(elo_track_temp.get_rating(team))\n"
+            "\n"
+            "fig, ax = plt.subplots(figsize=(14, 7))\n"
+            "for team in TEAMS:\n"
+            "    ax.plot(elo_track[team], label=team, linewidth=1.5, alpha=0.8)\n"
+            "\n"
+            'ax.set_xlabel("Game Number", fontsize=12)\n'
+            'ax.set_ylabel("Elo Rating", fontsize=12)\n'
+            'ax.set_title("Elo Rating Evolution (K=32)", fontsize=14, fontweight="bold")\n'
+            'ax.legend(loc="upper left", fontsize=9, ncol=2)\n'
+            "ax.grid(True, alpha=0.3)\n"
+            'ax.axhline(y=1500, color="black", linestyle="--", alpha=0.3)\n'
+            "plt.tight_layout()\n"
+            "plt.show()"
+        )
+    )
+
+    # ── Cell 11: Section 4 — Predicting with Elo ──────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 4: Predicting with Elo\n"
+            "\n"
+            "Elo ratings convert directly to win probabilities. A rating difference of "
+            "`Δ` points gives an expected score of:\n"
+            "\n"
+            "```\n"
+            "P(home wins) = 1 / (1 + 10^((rating_away - rating_home - HFA) / 400))\n"
+            "```\n"
+            "\n"
+            "Let's use this to predict upcoming games and compare with actual results."
+        )
+    )
+
+    # ── Cell 12: Elo predictions ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 12: Elo win probability predictions\n"
+            "#\n"
+            "# For each game in our dataset, compute the Elo-predicted win probability\n"
+            "# and compare with actual outcomes.\n"
+            "\n"
+            "elo_pred = EloRating(K=32, initial_rating=1500, home_advantage=65)\n"
+            "results = []\n"
+            "\n"
+            "# Use first 150 games for training, last 50 for testing\n"
+            "train_games = games_df.iloc[:150]\n"
+            "test_games = games_df.iloc[150:]\n"
+            "\n"
+            "for _, game in train_games.iterrows():\n"
+            '    elo_pred.update(game["HOME_TEAM"], game["AWAY_TEAM"], game["HOME_SCORE"], game["AWAY_SCORE"])\n'
+            "\n"
+            "# Now predict on test set\n"
+            "correct = 0\n"
+            "total = 0\n"
+            "brier_scores = []\n"
+            "\n"
+            "for _, game in test_games.iterrows():\n"
+            '    prob_home = elo_pred.win_probability(game["HOME_TEAM"], game["AWAY_TEAM"])\n'
+            '    actual_home_win = 1 if game["HOME_SCORE"] > game["AWAY_SCORE"] else 0\n'
+            "    predicted_home_win = 1 if prob_home > 0.5 else 0\n"
+            "    correct += (predicted_home_win == actual_home_win)\n"
+            "    total += 1\n"
+            "    brier_scores.append((prob_home - actual_home_win) ** 2)\n"
+            "    # Still update ratings after each game for continuous learning\n"
+            '    elo_pred.update(game["HOME_TEAM"], game["AWAY_TEAM"], game["HOME_SCORE"], game["AWAY_SCORE"])\n'
+            "\n"
+            "accuracy = correct / total if total > 0 else 0\n"
+            "brier = np.mean(brier_scores) if brier_scores else 0\n"
+            "\n"
+            'print(f"Elo Prediction Results (test set):")\n'
+            'print(f"  Accuracy: {accuracy:.3f} ({correct}/{total})")\n'
+            'print(f"  Brier Score: {brier:.4f}")\n'
+            'print(f"  (Brier score: lower is better, 0.25 = random guessing)")'
+        )
+    )
+
+    # ── Cell 13: Section 5 — Massey Ratings ──────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 5: Massey Ratings\n"
+            "\n"
+            "The **Massey method** (Kenneth Massey, 1997) solves a linear system to find "
+            "team ratings that best explain observed point margins. It decomposes each "
+            "team's rating into **offensive** and **defensive** components.\n"
+            "\n"
+            "The core equation: `M · r = p`\n"
+            "- `M[i,j]` = number of times team i played team j\n"
+            "- `p[i]` = average point margin for team i\n"
+            "- `r[i]` = the rating to solve for\n"
+            "\n"
+            "SportsQuant's `MasseyRatings` class handles matrix construction, solving, "
+            "and decomposition."
+        )
+    )
+
+    # ── Cell 14: Massey ratings computation ──────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 14: Compute Massey ratings using SportsQuant\n"
+            "\n"
+            "massey = MasseyRatings(home_advantage=3.0)\n"
+            "\n"
+            "# Massey expects a DataFrame with HOME_TEAM, AWAY_TEAM, HOME_SCORE, AWAY_SCORE\n"
+            "massey_ratings = massey.compute_ratings(games_df)\n"
+            "\n"
+            'print("Massey Ratings:")\n'
+            'print(massey_ratings.sort_values("overall_rating", ascending=False).to_string())\n'
+            "print(f\"\\nRating range: {massey_ratings['overall_rating'].min():.2f} to {massey_ratings['overall_rating'].max():.2f}\")\n"
+            "print(f\"Rating std: {massey_ratings['overall_rating'].std():.2f}\")"
+        )
+    )
+
+    # ── Cell 15: Massey decomposition ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 15: Massey offensive/defensive decomposition and visualization\n"
+            "\n"
+            "# Decompose each team's rating into offensive and defensive components\n"
+            "off_def = {}\n"
+            "for team in massey_ratings.index:\n"
+            '    rating = massey_ratings.loc[team, "overall_rating"]\n'
+            "    off, defe = massey.decompose_rating(rating)\n"
+            '    off_def[team] = {"offensive": off, "defensive": defe, "overall": rating}\n'
+            "\n"
+            "off_def_df = pd.DataFrame(off_def).T\n"
+            'print("Massey Offensive/Defensive Decomposition:")\n'
+            'print(off_def_df.sort_values("overall", ascending=False).to_string())\n'
+            "\n"
+            "# Plot offensive vs defensive\n"
+            "fig, ax = plt.subplots(figsize=(10, 8))\n"
+            'ax.scatter(off_def_df["offensive"], off_def_df["defensive"], s=100, alpha=0.7)\n'
+            "for team in off_def_df.index:\n"
+            '    ax.annotate(team, (off_def_df.loc[team, "offensive"], off_def_df.loc[team, "defensive"]),\n'
+            '                fontsize=11, fontweight="bold", ha="center", va="bottom")\n'
+            'ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)\n'
+            'ax.axvline(x=0, color="gray", linestyle="--", alpha=0.5)\n'
+            'ax.set_xlabel("Offensive Rating", fontsize=12)\n'
+            'ax.set_ylabel("Defensive Rating", fontsize=12)\n'
+            'ax.set_title("Massey Offensive vs Defensive Decomposition", fontsize=14, fontweight="bold")\n'
+            "ax.grid(True, alpha=0.3)\n"
+            "plt.tight_layout()\n"
+            "plt.show()"
+        )
+    )
+
+    # ── Cell 16: Section 6 — PageRank Ratings ──────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 6: PageRank Ratings\n"
+            "\n"
+            "**PageRank** (the algorithm behind Google Search) can be adapted for sports "
+            "ratings. The key insight: **a win over a strong team should count more than a "
+            "win over a weak team**. This is the transitive property of strength.\n"
+            "\n"
+            "The algorithm:\n"
+            "1. Build a transition matrix where edges represent wins\n"
+            "2. Apply power iteration with a damping factor (typically 0.85)\n"
+            "3. A team's rating = the steady-state probability of reaching it via wins\n"
+            "\n"
+            "SportsQuant's `PageRankRatings` class implements this with margin-weighted "
+            "transitions."
+        )
+    )
+
+    # ── Cell 17: PageRank computation ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 17: Compute PageRank ratings\n"
+            "\n"
+            "pagerank = PageRankRatings(damping=0.85, max_iterations=100, tolerance=1e-6)\n"
+            "\n"
+            "# PageRank expects WINNER, LOSER, WINNER_SCORE, LOSER_SCORE columns\n"
+            "pr_ratings = pagerank.compute_ratings(games_df, TEAMS)\n"
+            "\n"
+            "# Sort by rating\n"
+            "pr_sorted = sorted(pr_ratings.items(), key=lambda x: x[1], reverse=True)\n"
+            "\n"
+            'print("PageRank Ratings (damping=0.85):")\n'
+            "print(f\"{'Team':<6} {'PageRank':>10} {'True':>8}\")\n"
+            "print(f\"{'-'*6} {'-'*10} {'-'*8}\")\n"
+            "for team, rating in pr_sorted:\n"
+            '    print(f"{team:<6} {rating:>10.6f} {TRUE_STRENGTH[team]:>8.1f}")'
+        )
+    )
+
+    # ── Cell 18: PageRank visualization ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 18: Compare PageRank strength of schedule\n"
+            "\n"
+            "sos = {}\n"
+            "for team in TEAMS:\n"
+            "    sos[team] = pagerank.strength_of_schedule(games_df, pr_ratings, team)\n"
+            "\n"
+            'print("PageRank Strength of Schedule:")\n'
+            "print(f\"{'Team':<6} {'Rating':>10} {'SoS':>10}\")\n"
+            "print(f\"{'-'*6} {'-'*10} {'-'*10}\")\n"
+            "for team in sorted(TEAMS, key=lambda t: pr_ratings[t], reverse=True):\n"
+            '    print(f"{team:<6} {pr_ratings[team]:>10.6f} {sos[team]:>10.6f}")\n'
+            "\n"
+            "# Plot PageRank ratings\n"
+            "fig, ax = plt.subplots(figsize=(10, 6))\n"
+            "teams_sorted = sorted(TEAMS, key=lambda t: pr_ratings[t], reverse=True)\n"
+            "ratings_sorted = [pr_ratings[t] for t in teams_sorted]\n"
+            "colors = ['#2E86AB' if r > np.mean(ratings_sorted) else '#E63946' for r in ratings_sorted]\n"
+            "ax.bar(teams_sorted, ratings_sorted, color=colors, alpha=0.8)\n"
+            "ax.axhline(y=np.mean(ratings_sorted), color='black', linestyle='--', alpha=0.5, label='Average')\n"
+            "ax.set_xlabel('Team', fontsize=12)\n"
+            "ax.set_ylabel('PageRank Rating', fontsize=12)\n"
+            "ax.set_title('PageRank Team Ratings', fontsize=14, fontweight='bold')\n"
+            "ax.legend()\n"
+            "ax.grid(True, alpha=0.3, axis='y')\n"
+            "plt.tight_layout()\n"
+            "plt.show()"
+        )
+    )
+
+    # ── Cell 19: Section 7 — Glicko Ratings ──────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 7: Glicko Ratings\n"
+            "\n"
+            "The **Glicko system** (Mark Glickman, 1995) extends Elo by adding a "
+            "**rating deviation (RD)** that measures uncertainty in a team's rating.\n"
+            "\n"
+            "Key concepts:\n"
+            "- **Rating (r)**: Best estimate of skill, similar to Elo\n"
+            "- **Rating Deviation (RD)**: Uncertainty measure (like a standard deviation)\n"
+            "- **Rating Volatility (σ)**: How much rating fluctuates between periods\n"
+            "\n"
+            "A new team starts with `r=1500, RD=350`. After each game, RD shrinks "
+            "(we learn more). Between rating periods, RD grows (we become less certain).\n"
+            "\n"
+            "This is especially useful for:\n"
+            "- New teams with few games played\n"
+            "- Off-season uncertainty\n"
+            "- Deciding how much to trust a rating"
+        )
+    )
+
+    # ── Cell 20: Glicko implementation ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 20: Glicko rating system implementation\n"
+            "\n"
+            "@dataclass\n"
+            "class GlickoTeam:\n"
+            '    """A team\'s Glicko rating and RD."""\n'
+            "    rating: float = 1500.0\n"
+            "    rd: float = 350.0\n"
+            "    vol: float = 0.06  # volatility\n"
+            "\n"
+            "\n"
+            "class GlickoRating:\n"
+            '    """Glicko-1 rating system.\n'
+            "\n"
+            "    Implements the Glicko-1 algorithm with rating deviation tracking.\n"
+            "    After each rating period, RD shrinks for teams that played and\n"
+            "    grows for teams that didn't.\n"
+            '    """\n'
+            "\n"
+            "    SCALE = 173.7178  # Glicko scaling factor\n"
+            "\n"
+            "    def __init__(self, c: float = 63.2, initial_rating: float = 1500.0, initial_rd: float = 350.0):\n"
+            "        self.c = c  # RD increase per period\n"
+            "        self.initial_rating = initial_rating\n"
+            "        self.initial_rd = initial_rd\n"
+            "        self.teams: dict[str, GlickoTeam] = {}\n"
+            "        self.history: list = []\n"
+            "\n"
+            "    def get_team(self, team: str) -> GlickoTeam:\n"
+            "        if team not in self.teams:\n"
+            "            self.teams[team] = GlickoTeam(rating=self.initial_rating, rd=self.initial_rd)\n"
+            "        return self.teams[team]\n"
+            "\n"
+            "    def g(self, rd: float) -> float:\n"
+            '        """Glicko g-function."""\n'
+            "        return 1.0 / math.sqrt(1.0 + 3.0 * (rd / self.SCALE) ** 2 / (math.pi ** 2))\n"
+            "\n"
+            "    def expected_score(self, rating_a: float, rd_a: float, rating_b: float, rd_b: float) -> float:\n"
+            '        """Expected score for team A against team B."""\n'
+            "        g_b = self.g(rd_b)\n"
+            "        return 1.0 / (1.0 + 10.0 ** (-g_b * (rating_a - rating_b) / (400.0)))\n"
+            "\n"
+            "    def update_period(self, games: pd.DataFrame) -> None:\n"
+            '        """Update all teams after a rating period."""\n'
+            "        # Group games by team\n"
+            "        team_results = {team: [] for team in self.teams}\n"
+            "        for _, game in games.iterrows():\n"
+            '            home = game["HOME_TEAM"]\n'
+            '            away = game["AWAY_TEAM"]\n'
+            '            home_score = game["HOME_SCORE"]\n'
+            '            away_score = game["AWAY_SCORE"]\n'
+            "            # Home advantage adjustment\n"
+            "            home_team = self.get_team(home)\n"
+            "            away_team = self.get_team(away)\n"
+            "            home_result = 1.0 if home_score > away_score else (0.0 if home_score < away_score else 0.5)\n"
+            "            away_result = 1.0 - home_result\n"
+            "            team_results.setdefault(home, []).append((away, home_result))\n"
+            "            team_results.setdefault(away, []).append((home, away_result))\n"
+            "\n"
+            "        # Update each team\n"
+            "        new_teams = {}\n"
+            "        for team in set(list(self.teams.keys()) + list(team_results.keys())):\n"
+            "            old = self.get_team(team)\n"
+            "            results = team_results.get(team, [])\n"
+            "\n"
+            "            if not results:\n"
+            "                # RD increases for inactive teams\n"
+            "                new_rd = min(math.sqrt(old.rd ** 2 + self.c ** 2), 350.0)\n"
+            "                new_teams[team] = GlickoTeam(rating=old.rating, rd=new_rd, vol=old.vol)\n"
+            "                continue\n"
+            "\n"
+            "            d_sq_inv = 0.0\n"
+            "            sum_g_sq_e = 0.0\n"
+            "            improvement = 0.0\n"
+            "\n"
+            "            for opp_name, score in results:\n"
+            "                opp = self.get_team(opp_name)\n"
+            "                g_val = self.g(opp.rd)\n"
+            "                e_val = self.expected_score(old.rating, old.rd, opp.rating, opp.rd)\n"
+            "                d_sq_inv += g_val ** 2 * e_val * (1 - e_val)\n"
+            "                improvement += g_val * (score - e_val)\n"
+            "\n"
+            "            if d_sq_inv == 0:\n"
+            "                new_teams[team] = GlickoTeam(rating=old.rating, rd=old.rd, vol=old.vol)\n"
+            "                continue\n"
+            "\n"
+            "            d_sq = 1.0 / d_sq_inv\n"
+            "            new_rd = min(math.sqrt(1.0 / (1.0 / old.rd ** 2 + 1.0 / d_sq)), 350.0)\n"
+            "            new_rating = old.rating + d_sq * improvement\n"
+            "            new_teams[team] = GlickoTeam(rating=new_rating, rd=new_rd, vol=old.vol)\n"
+            "\n"
+            "        self.history.append(dict(self.teams))\n"
+            "        self.teams = new_teams\n"
+            "\n"
+            "    def win_probability(self, home: str, away: str, home_adv: float = 65.0) -> tuple[float, float]:\n"
+            '        """Calculate home win probability and uncertainty.\n'
+            "\n"
+            "        Returns:\n"
+            "            Tuple of (win_prob, uncertainty) where uncertainty comes from RD.\n"
+            '        """\n'
+            "        h = self.get_team(home)\n"
+            "        a = self.get_team(away)\n"
+            "        adjusted_home = h.rating + home_adv\n"
+            "        prob = self.expected_score(adjusted_home, h.rd, a.rating, a.rd)\n"
+            "        combined_rd = math.sqrt(h.rd ** 2 + a.rd ** 2)\n"
+            "        return prob, combined_rd / 400.0  # Normalized uncertainty\n"
+            "\n"
+            'print("GlickoRating class defined.")'
+        )
+    )
+
+    # ── Cell 21: Run Glicko ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 21: Run Glicko on synthetic data (period-by-period)\n"
+            "#\n"
+            '# We process games in batches of 20 as "rating periods".\n'
+            "# Between periods, inactive teams' RD grows.\n"
+            "\n"
+            "glicko = GlickoRating(c=63.2, initial_rating=1500, initial_rd=350)\n"
+            "\n"
+            "# Process in rating periods of 20 games\n"
+            "period_size = 20\n"
+            "n_periods = len(games_df) // period_size\n"
+            "\n"
+            "for i in range(n_periods):\n"
+            "    period_games = games_df.iloc[i * period_size : (i + 1) * period_size]\n"
+            "    glicko.update_period(period_games)\n"
+            "\n"
+            'print("Glicko Ratings (after all periods):")\n'
+            "print(f\"{'Team':<6} {'Rating':>8} {'RD':>8} {'True':>8}\")\n"
+            "print(f\"{'-'*6} {'-'*8} {'-'*8} {'-'*8}\")\n"
+            "for team in sorted(TEAMS, key=lambda t: glicko.get_team(t).rating, reverse=True):\n"
+            "    t = glicko.get_team(team)\n"
+            '    print(f"{team:<6} {t.rating:>8.1f} {t.rd:>8.1f} {TRUE_STRENGTH[team]:>8.1f}")'
+        )
+    )
+
+    # ── Cell 22: Plot Glicko RD evolution ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 22: Plot Glicko rating and RD evolution\n"
+            "\n"
+            "glicko2 = GlickoRating(c=63.2, initial_rating=1500, initial_rd=350)\n"
+            "glicko2.update_period(games_df.iloc[:20])\n"
+            "\n"
+            "rd_track = {team: [glicko2.get_team(team).rd] for team in TEAMS}\n"
+            "rating_track = {team: [glicko2.get_team(team).rating] for team in TEAMS}\n"
+            "\n"
+            "for i in range(1, n_periods):\n"
+            "    period_games = games_df.iloc[i * period_size : (i + 1) * period_size]\n"
+            "    glicko2.update_period(period_games)\n"
+            "    for team in TEAMS:\n"
+            "        rd_track[team].append(glicko2.get_team(team).rd)\n"
+            "        rating_track[team].append(glicko2.get_team(team).rating)\n"
+            "\n"
+            "fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))\n"
+            "\n"
+            "# Rating evolution\n"
+            "for team in TEAMS:\n"
+            "    ax1.plot(rating_track[team], label=team, linewidth=1.5, alpha=0.8)\n"
+            'ax1.set_xlabel("Rating Period", fontsize=12)\n'
+            'ax1.set_ylabel("Glicko Rating", fontsize=12)\n'
+            'ax1.set_title("Glicko Rating Evolution", fontsize=14, fontweight="bold")\n'
+            'ax1.legend(loc="upper left", fontsize=8, ncol=2)\n'
+            "ax1.grid(True, alpha=0.3)\n"
+            "\n"
+            "# RD evolution\n"
+            "for team in TEAMS:\n"
+            "    ax2.plot(rd_track[team], label=team, linewidth=1.5, alpha=0.8)\n"
+            'ax2.set_xlabel("Rating Period", fontsize=12)\n'
+            'ax2.set_ylabel("Rating Deviation (RD)", fontsize=12)\n'
+            'ax2.set_title("Glicko RD Evolution (Uncertainty)", fontsize=14, fontweight="bold")\n'
+            'ax2.legend(loc="upper right", fontsize=8, ncol=2)\n'
+            "ax2.grid(True, alpha=0.3)\n"
+            "\n"
+            "plt.tight_layout()\n"
+            "plt.show()"
+        )
+    )
+
+    # ── Cell 23: Section 8 — Compare All Four ──────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 8: Compare All Four Rating Systems\n"
+            "\n"
+            "Now let's compare all four rating systems side by side. We normalize each "
+            "system to a common scale (z-scores) so we can see which teams are consistently "
+            "rated high or low."
+        )
+    )
+
+    # ── Cell 24: Comparison table ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 24: Compare all four rating systems\n"
+            "\n"
+            "comparison = {}\n"
+            "for team in TEAMS:\n"
+            "    elo_r = elo.get_rating(team)\n"
+            '    massey_r = massey_ratings.loc[team, "overall_rating"]\n'
+            "    pr_r = pr_ratings[team]\n"
+            "    glicko_r = glicko.get_team(team).rating\n"
+            "    glicko_rd = glicko.get_team(team).rd\n"
+            "    comparison[team] = {\n"
+            '        "Elo": elo_r,\n'
+            '        "Massey": massey_r,\n'
+            '        "PageRank": pr_r,\n'
+            '        "Glicko": glicko_r,\n'
+            '        "Glicko_RD": glicko_rd,\n'
+            '        "True": TRUE_STRENGTH[team],\n'
+            "    }\n"
+            "\n"
+            "comp_df = pd.DataFrame(comparison).T\n"
+            "\n"
+            "# Normalize to z-scores for comparison\n"
+            'for col in ["Elo", "Massey", "PageRank", "Glicko", "True"]:\n'
+            '    comp_df[f"{col}_z"] = (comp_df[col] - comp_df[col].mean()) / comp_df[col].std()\n'
+            "\n"
+            'print("Rating Comparison (z-scored):")\n'
+            "print(f\"{'Team':<6} {'Elo_z':>8} {'Massey_z':>8} {'PR_z':>8} {'Glicko_z':>8} {'True_z':>8}\")\n"
+            "print(f\"{'-'*6} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*8}\")\n"
+            'for team in sorted(TEAMS, key=lambda t: comp_df.loc[t, "True_z"], reverse=True):\n'
+            "    row = comp_df.loc[team]\n"
+            "    print(f\"{team:<6} {row['Elo_z']:>8.2f} {row['Massey_z']:>8.2f} {row['PageRank_z']:>8.2f} {row['Glicko_z']:>8.2f} {row['True_z']:>8.2f}\")"
+        )
+    )
+
+    # ── Cell 25: Prediction comparison ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 25: Predict next-game win probabilities for all systems\n"
+            "#\n"
+            "# For a hypothetical matchup: KC (home) vs CAR (away)\n"
+            "# Each system predicts different win probabilities.\n"
+            "\n"
+            'home_team = "KC"\n'
+            'away_team = "CAR"\n'
+            "\n"
+            "# Elo prediction\n"
+            "elo_prob = elo.win_probability(home_team, away_team)\n"
+            "\n"
+            "# Massey prediction (rating difference)\n"
+            'massey_diff = massey_ratings.loc[home_team, "overall_rating"] - massey_ratings.loc[away_team, "overall_rating"]\n'
+            "massey_prob = 1.0 / (1.0 + 10.0 ** (-massey_diff / 14.0))  # Convert spread to prob\n"
+            "\n"
+            "# PageRank prediction\n"
+            "pr_diff = pr_ratings[home_team] - pr_ratings[away_team]\n"
+            "pr_prob = 1.0 / (1.0 + 10.0 ** (-pr_diff * 500 / 400.0))  # Scale PageRank diff\n"
+            "\n"
+            "# Glicko prediction\n"
+            "glicko_prob, glicko_unc = glicko.win_probability(home_team, away_team)\n"
+            "\n"
+            'print(f"Predicted Win Probabilities: {home_team} (home) vs {away_team} (away)")\n'
+            "print(f\"{'System':<12} {'Home Win %':>12} {'Confidence':>12}\")\n"
+            "print(f\"{'-'*12} {'-'*12} {'-'*12}\")\n"
+            "print(f\"{'Elo':<12} {elo_prob:>11.1%} {'High':>12}\")\n"
+            "print(f\"{'Massey':<12} {massey_prob:>11.1%} {'High':>12}\")\n"
+            "print(f\"{'PageRank':<12} {pr_prob:>11.1%} {'Medium':>12}\")\n"
+            "print(f\"{'Glicko':<12} {glicko_prob:>11.1%} {f'±{glicko_unc:.2f}':>12}\")\n"
+            'print(f"\\nExpected spread (Massey): KC by {massey_diff:.1f} points")'
+        )
+    )
+
+    # ── Cell 26: Visualization comparison ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 26: Visual comparison of all four rating systems\n"
+            "\n"
+            "fig, axes = plt.subplots(2, 2, figsize=(16, 12))\n"
+            "\n"
+            "# Elo\n"
+            "teams_sorted_elo = sorted(TEAMS, key=lambda t: elo.get_rating(t), reverse=True)\n"
+            "elo_vals = [elo.get_rating(t) for t in teams_sorted_elo]\n"
+            "axes[0, 0].bar(teams_sorted_elo, elo_vals, color='#2E86AB', alpha=0.8)\n"
+            "axes[0, 0].set_title('Elo Ratings', fontsize=13, fontweight='bold')\n"
+            "axes[0, 0].set_ylabel('Rating')\n"
+            "axes[0, 0].axhline(y=1500, color='gray', linestyle='--', alpha=0.5)\n"
+            "\n"
+            "# Massey\n"
+            'teams_sorted_massey = sorted(TEAMS, key=lambda t: massey_ratings.loc[t, "overall_rating"], reverse=True)\n'
+            'massey_vals = [massey_ratings.loc[t, "overall_rating"] for t in teams_sorted_massey]\n'
+            "axes[0, 1].bar(teams_sorted_massey, massey_vals, color='#E63946', alpha=0.8)\n"
+            "axes[0, 1].set_title('Massey Ratings', fontsize=13, fontweight='bold')\n"
+            "axes[0, 1].set_ylabel('Rating')\n"
+            "axes[0, 1].axhline(y=0, color='gray', linestyle='--', alpha=0.5)\n"
+            "\n"
+            "# PageRank\n"
+            "teams_sorted_pr = sorted(TEAMS, key=lambda t: pr_ratings[t], reverse=True)\n"
+            "pr_vals = [pr_ratings[t] for t in teams_sorted_pr]\n"
+            "axes[1, 0].bar(teams_sorted_pr, pr_vals, color='#2A9D8F', alpha=0.8)\n"
+            "axes[1, 0].set_title('PageRank Ratings', fontsize=13, fontweight='bold')\n"
+            "axes[1, 0].set_ylabel('Rating')\n"
+            "\n"
+            "# Glicko (with error bars)\n"
+            "teams_sorted_gl = sorted(TEAMS, key=lambda t: glicko.get_team(t).rating, reverse=True)\n"
+            "gl_ratings = [glicko.get_team(t).rating for t in teams_sorted_gl]\n"
+            "gl_rds = [glicko.get_team(t).rd for t in teams_sorted_gl]\n"
+            "axes[1, 1].bar(teams_sorted_gl, gl_ratings, color='#F4A261', alpha=0.8,\n"
+            "               yerr=gl_rds, capsize=3, ecolor='black', alpha=0.6)\n"
+            "axes[1, 1].set_title('Glicko Ratings (with RD error bars)', fontsize=13, fontweight='bold')\n"
+            "axes[1, 1].set_ylabel('Rating ± RD')\n"
+            "\n"
+            "for ax in axes.flat:\n"
+            "    ax.grid(True, alpha=0.3, axis='y')\n"
+            "\n"
+            "plt.tight_layout()\n"
+            "plt.show()"
+        )
+    )
+
+    # ── Cell 27: Section 9 — Backtest ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 9: Backtest Each Rating System\n"
+            "\n"
+            "A rating system is only useful if it predicts future games. Let's backtest "
+            "each system by training on the first 75% of games and testing on the last 25%."
+        )
+    )
+
+    # ── Cell 28: Backtest ──────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 28: Backtest all four rating systems\n"
+            "\n"
+            "n = len(games_df)\n"
+            "train_size = int(n * 0.75)\n"
+            "train_df = games_df.iloc[:train_size]\n"
+            "test_df = games_df.iloc[train_size:]\n"
+            "\n"
+            "def backtest_elo(train: pd.DataFrame, test: pd.DataFrame, k: float = 32) -> dict:\n"
+            '    """Backtest Elo ratings."""\n'
+            "    model = EloRating(K=k, initial_rating=1500, home_advantage=65)\n"
+            "    for _, game in train.iterrows():\n"
+            '        model.update(game["HOME_TEAM"], game["AWAY_TEAM"], game["HOME_SCORE"], game["AWAY_SCORE"])\n'
+            "    correct = 0\n"
+            "    total = 0\n"
+            "    brier = []\n"
+            "    for _, game in test.iterrows():\n"
+            '        prob = model.win_probability(game["HOME_TEAM"], game["AWAY_TEAM"])\n'
+            '        actual = 1 if game["HOME_SCORE"] > game["AWAY_SCORE"] else 0\n'
+            "        pred = 1 if prob > 0.5 else 0\n"
+            "        correct += (pred == actual)\n"
+            "        total += 1\n"
+            "        brier.append((prob - actual) ** 2)\n"
+            '    return {"accuracy": correct / total, "brier": np.mean(brier), "total": total}\n'
+            "\n"
+            "def backtest_massey(train: pd.DataFrame, test: pd.DataFrame) -> dict:\n"
+            '    """Backtest Massey ratings."""\n'
+            "    model = MasseyRatings(home_advantage=3.0)\n"
+            "    ratings = model.compute_ratings(train)\n"
+            "    correct = 0\n"
+            "    total = 0\n"
+            "    brier = []\n"
+            "    for _, game in test.iterrows():\n"
+            '        h = game["HOME_TEAM"]\n'
+            '        a = game["AWAY_TEAM"]\n'
+            "        if h in ratings.index and a in ratings.index:\n"
+            '            diff = ratings.loc[h, "overall_rating"] - ratings.loc[a, "overall_rating"] + 3.0\n'
+            "            prob = 1.0 / (1.0 + 10.0 ** (-diff / 14.0))\n"
+            '            actual = 1 if game["HOME_SCORE"] > game["AWAY_SCORE"] else 0\n'
+            "            pred = 1 if prob > 0.5 else 0\n"
+            "            correct += (pred == actual)\n"
+            "            total += 1\n"
+            "            brier.append((prob - actual) ** 2)\n"
+            '    return {"accuracy": correct / total if total > 0 else 0, "brier": np.mean(brier) if brier else 0, "total": total}\n'
+            "\n"
+            "def backtest_pagerank(train: pd.DataFrame, test: pd.DataFrame) -> dict:\n"
+            '    """Backtest PageRank ratings."""\n'
+            "    model = PageRankRatings(damping=0.85)\n"
+            '    teams = sorted(set(train["HOME_TEAM"].unique()) | set(train["AWAY_TEAM"].unique()))\n'
+            "    ratings = model.compute_ratings(train, teams)\n"
+            "    correct = 0\n"
+            "    total = 0\n"
+            "    brier = []\n"
+            "    for _, game in test.iterrows():\n"
+            '        h = game["HOME_TEAM"]\n'
+            '        a = game["AWAY_TEAM"]\n'
+            "        if h in ratings and a in ratings:\n"
+            "            diff = (ratings[h] - ratings[a]) * 500  # Scale factor\n"
+            "            prob = 1.0 / (1.0 + 10.0 ** (-diff / 400.0))\n"
+            '            actual = 1 if game["HOME_SCORE"] > game["AWAY_SCORE"] else 0\n'
+            "            pred = 1 if prob > 0.5 else 0\n"
+            "            correct += (pred == actual)\n"
+            "            total += 1\n"
+            "            brier.append((prob - actual) ** 2)\n"
+            '    return {"accuracy": correct / total if total > 0 else 0, "brier": np.mean(brier) if brier else 0, "total": total}\n'
+            "\n"
+            "def backtest_glicko(train: pd.DataFrame, test: pd.DataFrame, period_size: int = 20) -> dict:\n"
+            '    """Backtest Glicko ratings."""\n'
+            "    model = GlickoRating(c=63.2, initial_rating=1500, initial_rd=350)\n"
+            "    n_periods = len(train) // period_size\n"
+            "    for i in range(n_periods):\n"
+            "        period = train.iloc[i * period_size : (i + 1) * period_size]\n"
+            "        model.update_period(period)\n"
+            "    correct = 0\n"
+            "    total = 0\n"
+            "    brier = []\n"
+            "    for _, game in test.iterrows():\n"
+            '        prob, _ = model.win_probability(game["HOME_TEAM"], game["AWAY_TEAM"])\n'
+            '        actual = 1 if game["HOME_SCORE"] > game["AWAY_SCORE"] else 0\n'
+            "        pred = 1 if prob > 0.5 else 0\n"
+            "        correct += (pred == actual)\n"
+            "        total += 1\n"
+            "        brier.append((prob - actual) ** 2)\n"
+            '    return {"accuracy": correct / total if total > 0 else 0, "brier": np.mean(brier) if brier else 0, "total": total}\n'
+            "\n"
+            "# Run backtests\n"
+            "results = {\n"
+            '    "Elo (K=32)": backtest_elo(train_df, test_df, k=32),\n'
+            '    "Elo (K=20)": backtest_elo(train_df, test_df, k=20),\n'
+            '    "Massey": backtest_massey(train_df, test_df),\n'
+            '    "PageRank": backtest_pagerank(train_df, test_df),\n'
+            '    "Glicko": backtest_glicko(train_df, test_df),\n'
+            "}\n"
+            "\n"
+            'print("Backtest Results (75/25 split):")\n'
+            "print(f\"{'System':<15} {'Accuracy':>10} {'Brier':>10} {'Games':>8}\")\n"
+            "print(f\"{'-'*15} {'-'*10} {'-'*10} {'-'*8}\")\n"
+            "for name, r in results.items():\n"
+            "    print(f\"{name:<15} {r['accuracy']:>9.1%} {r['brier']:>10.4f} {r['total']:>8d}\")"
+        )
+    )
+
+    # ── Cell 29: Exercises ─────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Exercises\n"
+            "\n"
+            "Try these on your own:\n"
+            "\n"
+            "1. **Tune Elo K-factor** — Run backtests with K=10, K=20, K=32, K=50. "
+            "Which produces the best Brier score? Plot accuracy vs K.\n"
+            "\n"
+            "2. **Combine Elo + Massey** — Create an ensemble that averages Elo win probability "
+            "with Massey-derived probability. Does the ensemble beat either system alone?\n"
+            "\n"
+            "3. **Predict the Super Bowl** — Use your best rating system to predict the winner "
+            "of the Super Bowl. How confident are you? What does Glicko's RD say about "
+            "your uncertainty?\n"
+            "\n"
+            "4. **PageRank personalization** — Use `personalize_by_results()` to create "
+            "a team-specific PageRank vector. How does KC's personalized ranking differ "
+            "from the global one?\n"
+            "\n"
+            "5. **Conference adjustment** — Use `massey.conference_adjustment()` to "
+            "normalize ratings across conferences. Does this improve backtest accuracy?"
+        )
+    )
+
+    # ── Cell 30: Summary ─────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Summary\n"
+            "\n"
+            "In this lab you learned:\n"
+            "\n"
+            "- **Elo**: Simple iterative update, K-factor controls reactivity\n"
+            "- **Massey**: Linear algebra approach, decomposes into offense/defense\n"
+            "- **PageRank**: Transitive strength propagation, captures win quality\n"
+            "- **Glicko**: Elo + uncertainty (RD), essential for small samples\n"
+            "- How to compare rating systems using z-scores and backtesting\n"
+            "- How to convert ratings to win probabilities for prediction\n"
+            "\n"
+            "### Key API Reference\n"
+            "\n"
+            "| Class | Module | Purpose |\n"
+            "|---|---|---|\n"
+            "| `MasseyRatings` | `sportsquant.models.ratings.massey_ratings` | Massey method |\n"
+            "| `MasseyRatingsConfig` | `sportsquant.models.ratings.massey_ratings` | Configuration |\n"
+            "| `PageRankRatings` | `sportsquant.models.ratings.pagerank_ratings` | PageRank method |\n"
+            "\n"
+            "### Key Concepts\n"
+            "\n"
+            "| Concept | Description |\n"
+            "|---|---|\n"
+            "| **Elo K-factor** | Controls rating volatility; higher K = more reactive |\n"
+            "| **Massey decomposition** | Splits rating into offensive and defensive |\n"
+            "| **PageRank damping** | Probability of following a win edge (0.85 default) |\n"
+            "| **Glicko RD** | Rating deviation — measures uncertainty |\n"
+            "| **Backtesting** | Train on past data, test on future to validate |\n"
+            "\n"
+            "### Next Steps\n"
+            "\n"
+            "Continue to **Lab 08: Live Workflow** to learn how to connect rating systems "
+            "with the poller for end-to-end live betting analysis.\n"
+            "\n"
+            "---\n"
+            "\n"
+            "*This lab used `MasseyRatings` and `PageRankRatings` from "
+            "`sportsquant.models.ratings`. Elo and Glicko were implemented inline as "
+            "reference implementations for educational purposes.*"
+        )
+    )
+
+    nb.cells = cells
+    return nb
+
+
+def main() -> None:
+    """Build and write the notebook."""
+    nb = build()
+    nbf.write(nb, OUTPUT_PATH)
+    print(f"Written {OUTPUT_PATH} with {len(nb.cells)} cells")
+
+
+if __name__ == "__main__":
+    main()

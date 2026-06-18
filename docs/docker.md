@@ -1,139 +1,105 @@
 # Docker
 
-SportsQuant ships with a multi-stage Dockerfile and a profile-driven
-`docker-compose.yml`. Three profiles cover the common cases:
-
-| Profile | Services | Use case |
-|---------|----------|----------|
-| `web` | Web UI | Local dashboard, light dev work |
-| `api` | Web UI + REST API + Postgres | REST integration, data persistence |
-| `full` | All of `api` + poller + Redis + Kafka + Ignite | Full stack, end-to-end testing |
+## Overview
+sportsquant v0.2.0 ships as a 3-service docker compose stack:
+- `timescaledb` — PostgreSQL 18 with TimescaleDB 2.28 (pulled from upstream)
+- `poller` — built from `docker/Dockerfile.poller`, fetches odds + injuries
+- `web` — built from `docker/Dockerfile.web`, serves ops dashboard
 
 ## Quick start
 
 ```bash
-# Build the web image and start the dashboard
-make docker-up-web
-# → http://localhost:8080
-# → http://localhost:8080/nfl-predict
+make docker-up   # brings up timescaledb + poller + web
 ```
 
-The web image is built with `target: web` from the multi-stage Dockerfile
-and uses `uv` for fast, reproducible installs. Source is bind-mounted
-read-only so the running container reflects your working tree on restart.
+Then visit `http://localhost:8080`.
 
-## Profiles
-
-### `web` — Dashboard only (default for development)
+## Building images
 
 ```bash
-docker compose --profile web up -d --build
-# or
-make docker-up-web
+make docker-build-poller  # ~1.26 GB
+make docker-build-web      # ~1.01 GB
+make docker-build-all      # both
 ```
 
-- One service: `web`
-- Port: `8080`
-- Routes available: `/`, `/ev/`, `/backtest/`, `/ratings/`, `/nfl-predict/`
-- OpenAPI docs: `/api/docs`
+Note: `timescaledb` uses the upstream image `docker.io/timescale/timescaledb:latest-pg18` — no build needed.
 
-### `api` — Web + REST API + Postgres
+## Running the stack
+
+`make docker-up` brings up all 3 services with `docker compose up -d`. To use podman instead:
 
 ```bash
-docker compose --profile api up -d --build
-# or
-make docker-up-api
+make docker-up DOCKER=podman
 ```
 
-- Adds: `api` (FastAPI on :8000) and `postgres` (TimescaleDB on :5432)
-- The web UI binds to :8080 and the REST API to :8000.
-- Postgres credentials come from `.env` (defaults: `sportsquant/sportsquant`).
-
-### `full` — Everything
-
+Or directly:
 ```bash
-docker compose --profile full up -d --build
-# or
-make docker-up-full
+docker compose up -d
+podman compose up -d
 ```
 
-Adds to `api`:
-- `poller` — background odds/stats poller (currently a stub; included so
-  the compose file documents the intended service topology)
-- `redis` — caching layer on :6379
-- `kafka` — event bus on :9092
-- `ignite` — in-memory data grid on :10800 (thin client) / :11211 (REST)
+## Service URLs
 
-## Multi-stage build
+| Service | URL | Notes |
+|---------|-----|-------|
+| Web UI | http://localhost:8080 | Ops dashboard |
+| Web API docs | http://localhost:8080/api/docs | OpenAPI Swagger UI |
+| TimescaleDB | `localhost:5432` | DB client access (psql, DBeaver, etc.) |
+| Poller logs | `docker compose logs -f poller` | Background worker |
 
-The Dockerfile exposes four targets. Most users only need `web`:
-
-```bash
-# Default (web) — dashboard on :8080
-docker build -f docker/Dockerfile --target web -t sportsquant/web:latest .
-
-# Production API — REST service on :8000
-docker build -f docker/Dockerfile --target api -t sportsquant/api:latest .
-
-# Background poller
-docker build -f docker/Dockerfile --target poller -t sportsquant/poller:latest .
-
-# Dev image with live-reload
-docker build -f docker/Dockerfile --target dev -t sportsquant/dev:latest .
-```
-
-All targets share the same base layer (Python 3.12 + uv + ca-certificates)
-so the build cache is reused across targets.
-
-## Common operations
+## Stopping / cleaning up
 
 ```bash
-# Tail logs across all services
-make docker-logs
-
-# List running containers
-make docker-ps
-
-# Open a shell in the web container
-make docker-shell
-
-# Stop everything
-make docker-down
-
-# Stop and remove volumes (full reset)
-make docker-down-volumes
-
-# Build all three production images
-make docker-build-all
+make docker-down       # stop containers, keep DB data
+make docker-clean      # stop containers AND delete DB data
 ```
 
 ## Configuration
 
-Environment variables (set in `.env` or shell):
+All config is via environment variables. See `.env.example`:
 
-| Variable | Default | Used by |
-|----------|---------|---------|
-| `LOG_LEVEL` | `INFO` | web, api, poller |
-| `POSTGRES_USER` | `sportsquant` | postgres |
-| `POSTGRES_PASSWORD` | `sportsquant` | postgres |
-| `POSTGRES_DB` | `sportsquant` | postgres |
-| `ODDS_API_KEY` | _(empty)_ | poller |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | api |
+```bash
+cp .env.example .env
+# Edit .env with your Odds API key
+# Then: make docker-up
+```
 
-## Notes
+Key variables:
+- `SPORTSQUANT_DB_*` — DB connection
+- `SPORTSQUANT_POLLER_*` — poller behavior (scheduler, sports, intervals)
+- `SPORTSQUANT_POLLER_ODDS_API_KEY` — your Odds API key (optional, ESPN works without)
 
-- **Live reload**: the `web` and `dev` targets mount `src/` and
-  `notebooks/` read-only, so editing code on the host and restarting
-  the container picks up changes. For a true hot-reload dev loop use
-  the `dev` target with `uvicorn --reload`.
-- **Source mounts are read-only** to mirror production. To run with
-  full write access, remove the `:ro` suffix in `docker-compose.yml`.
-- **Poller is a stub**: `sportsquant-poller` is registered in
-  `pyproject.toml` as an entrypoint but the underlying module is not
-  yet fully implemented. The `poller` service will exit immediately
-  in the `full` profile until the poller is wired up.
-- **Old Dockerfiles**: The `docker/` directory contains several
-  legacy Dockerfiles (`nba-stats.Dockerfile`,
-  `Nvidia-Spark-RAPIDS-ubuntu.dockerfile`, etc.) that predate the
-  current architecture. They are excluded from the build context
-  via `.dockerignore` and should be considered for cleanup.
+## Architecture details
+
+```
+┌─────────────┐    writes    ┌──────────────┐
+│  poller     │ ──────────► │ timescaledb   │
+│ (Prefect/   │              │ (PG 18 +      │
+│  cron)      │              │  Timescale)   │
+└─────────────┘              └──────┬───────┘
+                                    │ reads
+                              ┌─────▼──────┐
+                              │   web      │
+                              │ (FastAPI + │
+                              │  Jinja2)   │
+                              └────────────┘
+```
+
+The poller is **independent** from the web UI — you can run one without the other.
+
+## Troubleshooting
+
+- **TimescaleDB won't start**: PG 18 requires the mount path to be `/var/lib/postgresql` (not `/var/lib/postgresql/data`). This is fixed in `docker-compose.yml`.
+- **TimescaleDB compression errors**: TimescaleDB 2.28 uses the new `columnstore` API. The init script uses `CALL add_columnstore_policy(...)` (not `SELECT add_compression_policy(...)`).
+- **Web UI shows "no data"**: Start the poller with `make poller-once` to run one cycle, or wait for the cron interval (default 15 min for ESPN).
+- **Poller logs say "API key missing"**: Set `SPORTSQUANT_POLLER_ODDS_API_KEY` in your `.env` file. ESPN works without a key.
+- **Image build is slow**: The poller image includes Prefect (~1 GB). The web image is ~1 GB. Build once, reuse the layers.
+
+## Healthchecks
+
+All services have healthchecks:
+- `timescaledb`: `pg_isready` every 10s
+- `poller`: module import every 60s
+- `web`: `curl /` every 30s
+
+`docker compose ps` shows health status.

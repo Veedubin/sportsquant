@@ -1,0 +1,899 @@
+"""Build script for Lab 03: Single-Bet EV — From Odds to Kelly-Sized Bet.
+
+Generates ``03_single_bet_ev.ipynb`` using nbformat. Run this script to
+produce the notebook, then open it in Jupyter to execute the cells against a
+live TimescaleDB instance (or synthetic data if the DB is empty).
+
+Usage::
+
+    cd /home/jcharles/Projects/Infrastructure/sportsquant
+    uv run python labs/build_lab_03.py
+"""
+
+from __future__ import annotations
+
+import nbformat as nbf
+
+OUTPUT_PATH = "labs/03_single_bet_ev.ipynb"
+
+
+def build() -> nbf.NotebookNode:
+    """Construct the Lab 03 notebook programmatically."""
+    nb = nbf.v4.new_notebook()
+    nb.metadata.update(
+        {
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3",
+            },
+            "language_info": {
+                "name": "python",
+                "version": "3.12.0",
+            },
+        }
+    )
+
+    cells: list[nbf.NotebookNode] = []
+
+    # ── Cell 1: Title ──────────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "# Lab 03: Single-Bet EV — From Odds to Kelly-Sized Bet\n"
+            "\n"
+            "This lab walks you through the fundamental math of sports betting: converting "
+            "odds to probabilities, computing expected value (EV), and sizing bets with the "
+            "Kelly Criterion. By the end you will:\n"
+            "\n"
+            "- Pull latest odds from TimescaleDB (or use synthetic data)\n"
+            "- Convert American odds to decimal odds and implied probability\n"
+            "- Understand the vig (juice) and overround\n"
+            "- Estimate true probability by removing the vig\n"
+            "- Calculate EV for a single bet\n"
+            "- Apply the Kelly Criterion (full and fractional)\n"
+            "- Compute bet sizes from a bankroll\n"
+            "- Build a portfolio view of multiple bets\n"
+            "\n"
+            "---"
+        )
+    )
+
+    # ── Cell 2: Prerequisites ──────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "## Prerequisites\n"
+            "\n"
+            "- **Labs 01 and 02 completed** — you can connect to TimescaleDB and query odds_ticks\n"
+            "- Understanding of American odds notation (e.g., -110, +150)\n"
+            "- Basic probability knowledge\n"
+            "\n"
+            "### Key Formulas Preview\n"
+            "\n"
+            "| Formula | Description |\n"
+            "|---|---|\n"
+            "| `implied_prob = 1 / decimal_odds` | Book's implied probability |\n"
+            "| `overround = sum(implied_probs) - 1` | The vig baked into the odds |\n"
+            "| `true_prob = implied_prob / overround` | Vig-adjusted probability (naive method) |\n"
+            "| `EV = true_prob * (decimal_odds - 1) - (1 - true_prob)` | Expected value per $1 staked |\n"
+            "| `kelly = (true_prob * b - (1 - true_prob)) / b` | Kelly fraction (b = decimal_odds - 1) |"
+        )
+    )
+
+    # ── Cell 3: Section 1 — Setup ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 1: Setup — Imports and DB Connection\n"
+            "\n"
+            "We'll use the sportsquant betting module for odds conversion, Kelly calculations, "
+            "and edge detection. We also connect to TimescaleDB to pull live odds data."
+        )
+    )
+
+    # ── Cell 4: Imports ────────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 4: Core imports\n"
+            "import asyncio\n"
+            "import json\n"
+            "from dataclasses import dataclass\n"
+            "\n"
+            "import pandas as pd\n"
+            "\n"
+            "from sportsquant.core.betting.odds import Odds\n"
+            "from sportsquant.core.betting.kelly import (\n"
+            "    KellyCalculator,\n"
+            "    KellyCalculatorConfig,\n"
+            "    EdgeCalculator,\n"
+            "    EdgeCalculatorConfig,\n"
+            "    BankrollManager,\n"
+            "    BankrollManagerConfig,\n"
+            ")\n"
+            "from sportsquant.core.betting.engine import (\n"
+            "    american_to_decimal,\n"
+            "    calculate_ev,\n"
+            "    detect_arbitrage,\n"
+            "    expected_value,\n"
+            "    kelly_fraction,\n"
+            ")\n"
+            "from sportsquant.util.time_utils import american_to_implied_prob, safe_float\n"
+            "from sportsquant.infra.db.connection import DBConfig, DatabasePool, get_pool, reset_pool\n"
+            "\n"
+            "import nest_asyncio\n"
+            "nest_asyncio.apply()\n"
+            "\n"
+            "print('Imports loaded successfully.')"
+        )
+    )
+
+    # ── Cell 5: DB Connection ──────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 5: Connect to TimescaleDB\n"
+            "#\n"
+            "# If the DB is not available, we'll fall back to synthetic data below.\n"
+            "\n"
+            "db_available = False\n"
+            "try:\n"
+            "    config = DBConfig.from_env()\n"
+            "    pool = await get_pool(config)\n"
+            "    db_available = True\n"
+            "    print(f'Connected to {config.host}:{config.port}/{config.database}')\n"
+            "except Exception as e:\n"
+            "    print(f'DB not available: {e}')\n"
+            "    print('Will use synthetic data for this lab.')"
+        )
+    )
+
+    # ── Cell 6: Section 2 — Pull latest odds from DB ────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 2: Pull Latest Odds from the Database\n"
+            "\n"
+            "We'll query the `odds_ticks` table for the most recent head-to-head (h2h) "
+            "odds. If the database is empty or unavailable, we'll use synthetic data."
+        )
+    )
+
+    # ── Cell 7: Query odds or use synthetic ────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 7: Fetch latest h2h odds from odds_ticks\n"
+            "#\n"
+            "# We look for head-to-head (moneyline) odds. Each row has:\n"
+            "#   sport, league, event_id, book, market, selection, price, line, ts\n"
+            "\n"
+            "if db_available:\n"
+            "    rows = await pool.fetch(\n"
+            '        "SELECT sport, league, event_id, book, market, selection, price, line, ts "\n'
+            "        \"FROM odds_ticks WHERE market = 'h2h' ORDER BY ts DESC LIMIT 20\"\n"
+            "    )\n"
+            "    if rows:\n"
+            "        odds_df = pd.DataFrame([dict(r) for r in rows])\n"
+            "        print(f'Loaded {len(odds_df)} h2h odds rows from DB')\n"
+            "    else:\n"
+            "        print('DB has no h2h odds data. Using synthetic data.')\n"
+            "        db_available = False\n"
+            "\n"
+            "if not db_available or not len(rows):\n"
+            "    # Synthetic data representing typical NFL moneyline odds\n"
+            "    synthetic_data = [\n"
+            "        {'sport': 'nfl', 'league': 'NFL', 'event_id': 'KC_vs_BAL_2026', 'book': 'draftkings', 'market': 'h2h', 'selection': 'KC Chiefs', 'price': -150, 'line': None, 'ts': '2026-06-17T18:00:00Z'},\n"
+            "        {'sport': 'nfl', 'league': 'NFL', 'event_id': 'KC_vs_BAL_2026', 'book': 'draftkings', 'market': 'h2h', 'selection': 'BAL Ravens', 'price': +130, 'line': None, 'ts': '2026-06-17T18:00:00Z'},\n"
+            "        {'sport': 'nfl', 'league': 'NFL', 'event_id': 'KC_vs_BAL_2026', 'book': 'fanduel', 'market': 'h2h', 'selection': 'KC Chiefs', 'price': -145, 'line': None, 'ts': '2026-06-17T18:00:05Z'},\n"
+            "        {'sport': 'nfl', 'league': 'NFL', 'event_id': 'KC_vs_BAL_2026', 'book': 'fanduel', 'market': 'h2h', 'selection': 'BAL Ravens', 'price': +125, 'line': None, 'ts': '2026-06-17T18:00:05Z'},\n"
+            "        {'sport': 'nfl', 'league': 'NFL', 'event_id': 'SF_vs_DET_2026', 'book': 'draftkings', 'market': 'h2h', 'selection': 'SF 49ers', 'price': -110, 'line': None, 'ts': '2026-06-17T18:01:00Z'},\n"
+            "        {'sport': 'nfl', 'league': 'NFL', 'event_id': 'SF_vs_DET_2026', 'book': 'draftkings', 'market': 'h2h', 'selection': 'DET Lions', 'price': +105, 'line': None, 'ts': '2026-06-17T18:01:00Z'},\n"
+            "        {'sport': 'nfl', 'league': 'NFL', 'event_id': 'BUF_vs_MIA_2026', 'book': 'betmgm', 'market': 'h2h', 'selection': 'BUF Bills', 'price': -200, 'line': None, 'ts': '2026-06-17T18:02:00Z'},\n"
+            "        {'sport': 'nfl', 'league': 'NFL', 'event_id': 'BUF_vs_MIA_2026', 'book': 'betmgm', 'market': 'h2h', 'selection': 'MIA Dolphins', 'price': +175, 'line': None, 'ts': '2026-06-17T18:02:00Z'},\n"
+            "    ]\n"
+            "    odds_df = pd.DataFrame(synthetic_data)\n"
+            "    print(f'Using {len(odds_df)} synthetic odds rows')\n"
+            "\n"
+            "odds_df.head(10)"
+        )
+    )
+
+    # ── Cell 8: Section 3 — Parse American odds ────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 3: Parse American Odds\n"
+            "\n"
+            "American odds come in two flavors:\n"
+            "\n"
+            "- **Negative** (e.g., -110): you must bet $110 to win $100. Implies the favorite.\n"
+            "- **Positive** (e.g., +150): you win $150 for every $100 bet. Implies the underdog.\n"
+            "\n"
+            "The conversion to **decimal odds** (used in EV calculations):\n"
+            "\n"
+            "```\n"
+            "Positive American:  decimal = 1 + (american / 100)\n"
+            "Negative American:  decimal = 1 + (100 / |american|)\n"
+            "```\n"
+            "\n"
+            "And to **implied probability**:\n"
+            "\n"
+            "```\n"
+            "Positive:  implied_prob = 100 / (american + 100)\n"
+            "Negative:  implied_prob = |american| / (|american| + 100)\n"
+            "```"
+        )
+    )
+
+    # ── Cell 9: Convert odds ──────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 9: Convert American odds to decimal and implied probability\n"
+            "#\n"
+            "# We use sportsquant's Odds class for the conversion.\n"
+            "\n"
+            "# Let's pick a few example odds and convert them\n"
+            "example_odds = [-150, +130, -110, +105, -200, +175]\n"
+            "\n"
+            "print(f\"{'American':<12} {'Decimal':<12} {'Implied Prob':<15} {'Implied %':<12}\")\n"
+            "print(f\"{'-'*12} {'-'*12} {'-'*15} {'-'*12}\")\n"
+            "\n"
+            "for amer in example_odds:\n"
+            "    odds_obj = Odds(american=amer)\n"
+            "    dec = odds_obj.to_decimal()\n"
+            "    imp_prob = odds_obj.implied_prob()\n"
+            '    print(f"{amer:<12} {dec:<12.4f} {imp_prob:<15.6f} {imp_prob * 100:<12.2f}%")\n'
+            "\n"
+            "# Also show using the utility function\n"
+            "print('\\nUsing american_to_implied_prob from time_utils:')\n"
+            "for amer in example_odds:\n"
+            "    prob = american_to_implied_prob(amer)\n"
+            "    print(f'  american={amer:+4d} → implied_prob={prob:.6f} ({prob*100:.2f}%)')"
+        )
+    )
+
+    # ── Cell 10: Section 4 — The Vig (Juice) ────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 4: The Vig (Juice)\n"
+            "\n"
+            "Bookmakers charge a commission called the **vig** (or **juice**). It's built "
+            "into the odds: the implied probabilities of both sides sum to more than 1.0.\n"
+            "\n"
+            "For a typical -110 / -110 market:\n"
+            "- Implied prob of each side: 110 / (110 + 100) = 0.5238\n"
+            "- Sum: 0.5238 + 0.5238 = 1.0476\n"
+            "- Overround: 0.0476 (4.76%)\n"
+            "\n"
+            "The **overround** is the total excess over 1.0. It represents the book's edge."
+        )
+    )
+
+    # ── Cell 11: Calculate vig ─────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 11: Calculate overround (vig) for each event\n"
+            "#\n"
+            "# Group by event and book, then sum implied probabilities for h2h markets.\n"
+            "\n"
+            "def calculate_overround(df: pd.DataFrame) -> pd.DataFrame:\n"
+            '    """Calculate overround for each event+book combination.\n'
+            "\n"
+            "    Args:\n"
+            "        df: DataFrame with columns 'event_id', 'book', 'price'.\n"
+            "\n"
+            "    Returns:\n"
+            "        DataFrame with overround per event+book.\n"
+            '    """\n'
+            "    results = []\n"
+            "    for (event_id, book), group in df.groupby(['event_id', 'book']):\n"
+            "        implied_probs = []\n"
+            "        for _, row in group.iterrows():\n"
+            "            prob = american_to_implied_prob(row['price'])\n"
+            "            if prob is not None:\n"
+            "                implied_probs.append(prob)\n"
+            "        if implied_probs:\n"
+            "            overround = sum(implied_probs) - 1.0\n"
+            "            results.append({\n"
+            "                'event_id': event_id,\n"
+            "                'book': book,\n"
+            "                'implied_sum': sum(implied_probs),\n"
+            "                'overround': overround,\n"
+            "                'overround_pct': f'{overround * 100:.2f}%',\n"
+            "            })\n"
+            "    return pd.DataFrame(results)\n"
+            "\n"
+            "vig_df = calculate_overround(odds_df)\n"
+            "print('Overround (vig) by event and book:')\n"
+            "print(vig_df.to_string(index=False))\n"
+            "print(f\"\\nAverage overround: {vig_df['overround'].mean():.4f} ({vig_df['overround'].mean()*100:.2f}%)\")"
+        )
+    )
+
+    # ── Cell 12: Section 5 — Estimate true probability ──────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 5: Estimate True Probability\n"
+            "\n"
+            "The simplest way to remove the vig is the **naive method**: divide each "
+            "implied probability by the overround (sum of all implied probabilities).\n"
+            "\n"
+            "```\n"
+            "true_prob = implied_prob / overround_sum\n"
+            "```\n"
+            "\n"
+            "This ensures the probabilities sum to exactly 1.0. More sophisticated methods "
+            "(Shin's method, power method) exist but the naive method is a good starting point.\n"
+            "\n"
+            "The `EdgeCalculator` in `sportsquant.core.betting.kelly` provides edge and EV "
+            "calculations, but for true probability estimation we'll implement the naive method here."
+        )
+    )
+
+    # ── Cell 13: True probability calculation ──────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 13: Estimate true probability using the naive method\n"
+            "#\n"
+            "# For each event+book, we normalize implied probabilities by the overround.\n"
+            "\n"
+            "def estimate_true_probabilities(df: pd.DataFrame) -> pd.DataFrame:\n"
+            '    """Estimate true probabilities by removing the vig (naive method).\n'
+            "\n"
+            "    Args:\n"
+            "        df: DataFrame with columns 'event_id', 'book', 'selection', 'price'.\n"
+            "\n"
+            "    Returns:\n"
+            "        DataFrame with added 'decimal_odds', 'implied_prob', 'true_prob' columns.\n"
+            '    """\n'
+            "    result_rows = []\n"
+            "    for (event_id, book), group in df.groupby(['event_id', 'book']):\n"
+            "        implied_probs = []\n"
+            "        decimal_odds_list = []\n"
+            "        for _, row in group.iterrows():\n"
+            "            odds_obj = Odds(american=int(row['price']))\n"
+            "            dec = odds_obj.to_decimal()\n"
+            "            imp = odds_obj.implied_prob()\n"
+            "            decimal_odds_list.append(dec)\n"
+            "            implied_probs.append(imp)\n"
+            "        \n"
+            "        # Naive method: divide by overround\n"
+            "        overround_sum = sum(implied_probs)\n"
+            "        true_probs = [p / overround_sum for p in implied_probs]\n"
+            "        \n"
+            "        for (_, row), dec, imp, true in zip(group.iterrows(), decimal_odds_list, implied_probs, true_probs):\n"
+            "            result_rows.append({\n"
+            "                'event_id': row['event_id'],\n"
+            "                'book': row['book'],\n"
+            "                'selection': row['selection'],\n"
+            "                'price': row['price'],\n"
+            "                'decimal_odds': dec,\n"
+            "                'implied_prob': imp,\n"
+            "                'true_prob': true,\n"
+            "            })\n"
+            "    \n"
+            "    return pd.DataFrame(result_rows)\n"
+            "\n"
+            "prob_df = estimate_true_probabilities(odds_df)\n"
+            "print('True probability estimates (naive vig removal):')\n"
+            "print(prob_df.to_string(index=False))\n"
+            'print(f"\\nVerification — true probs sum per event+book:")\n'
+            "for (event_id, book), group in prob_df.groupby(['event_id', 'book']):\n"
+            "    print(f'  {event_id} @ {book}: sum = {group[\"true_prob\"].sum():.6f}')"
+        )
+    )
+
+    # ── Cell 14: Section 6 — Calculate EV ────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 6: Calculate Expected Value\n"
+            "\n"
+            "The **expected value (EV)** of a bet tells you how much you expect to profit "
+            "per dollar wagered over the long run:\n"
+            "\n"
+            "```\n"
+            "EV = true_prob × (decimal_odds - 1) - (1 - true_prob)\n"
+            "```\n"
+            "\n"
+            "- **EV > 0**: You have an edge (positive expected profit)\n"
+            "- **EV < 0**: The book has an edge (negative expected profit)\n"
+            "- **EV = 0**: Break-even bet\n"
+            "\n"
+            "We use `sportsquant.core.betting.engine.expected_value()` and "
+            "`EdgeCalculator.compute_expected_value()` to compute EV."
+        )
+    )
+
+    # ── Cell 15: EV calculation ──────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 15: Calculate EV for each selection\n"
+            "#\n"
+            "# We use both the engine's expected_value() and EdgeCalculator.\n"
+            "\n"
+            "edge_calc = EdgeCalculator()\n"
+            "\n"
+            "def compute_ev_row(row: dict) -> dict:\n"
+            '    """Compute EV and edge for a single bet."""\n'
+            "    odds_obj = Odds(american=int(row['price']))\n"
+            "    true_prob = row['true_prob']\n"
+            "    decimal_odds = row['decimal_odds']\n"
+            "    \n"
+            "    # Method 1: engine.expected_value\n"
+            "    ev_engine = expected_value(true_prob, odds_obj, true_prob)\n"
+            "    \n"
+            "    # Method 2: EdgeCalculator.compute_expected_value\n"
+            "    ev_edge = edge_calc.compute_expected_value(true_prob, decimal_odds, stake=1.0)\n"
+            "    \n"
+            "    # Method 3: EdgeCalculator.compute_edge\n"
+            "    edge = edge_calc.compute_edge(true_prob, decimal_odds)\n"
+            "    \n"
+            "    return {\n"
+            "        **row,\n"
+            "        'ev': ev_engine,\n"
+            "        'ev_alt': ev_edge,\n"
+            "        'edge': edge,\n"
+            "        'edge_pct': f'{edge * 100:.2f}%',\n"
+            "    }\n"
+            "\n"
+            "ev_df = prob_df.apply(lambda row: pd.Series(compute_ev_row(row.to_dict())), axis=1)\n"
+            "print('EV calculations for each selection:')\n"
+            "print(ev_df[['selection', 'book', 'price', 'decimal_odds', 'true_prob', 'ev', 'edge_pct']].to_string(index=False))\n"
+            "\n"
+            "# Highlight +EV bets\n"
+            "positive_ev = ev_df[ev_df['ev'] > 0]\n"
+            "if not positive_ev.empty:\n"
+            "    print(f'\\n🎯 Found {len(positive_ev)} +EV bet(s):')\n"
+            "    for _, row in positive_ev.iterrows():\n"
+            '        print(f\'  {row["selection"]} @ {row["book"]} (odds={row["price"]}, EV={row["ev"]:+.4f}, edge={row["edge"]*100:.2f}%)\')\n'
+            "else:\n"
+            "    print('\\nNo +EV bets found in the current data.')"
+        )
+    )
+
+    # ── Cell 16: Section 7 — Kelly Criterion ──────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 7: The Kelly Criterion\n"
+            "\n"
+            "The **Kelly Criterion** determines the optimal fraction of your bankroll "
+            "to bet to maximize long-term growth:\n"
+            "\n"
+            "```\n"
+            "kelly_fraction = (true_prob × b - (1 - true_prob)) / b\n"
+            "```\n"
+            "\n"
+            "where `b = decimal_odds - 1` (the net odds).\n"
+            "\n"
+            "- **kelly > 0**: You have an edge → bet this fraction of your bankroll\n"
+            "- **kelly ≤ 0**: No edge → don't bet\n"
+            "\n"
+            "**Fractional Kelly** (e.g., ¼ Kelly) is commonly used to reduce variance. "
+            "We'll use `KellyCalculator` from `sportsquant.core.betting.kelly`."
+        )
+    )
+
+    # ── Cell 17: Kelly calculation ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 17: Calculate Kelly fractions for +EV bets\n"
+            "#\n"
+            "# We use KellyCalculator from sportsquant.core.betting.kelly.\n"
+            "\n"
+            "kelly_calc = KellyCalculator()\n"
+            "\n"
+            "def compute_kelly_row(row: dict) -> dict:\n"
+            '    """Compute Kelly fractions for a single bet."""\n'
+            "    true_prob = row['true_prob']\n"
+            "    decimal_odds = row['decimal_odds']\n"
+            "    \n"
+            "    # Full Kelly\n"
+            "    full_kelly = kelly_calc.compute_kelly(true_prob, decimal_odds)\n"
+            "    \n"
+            "    # Quarter Kelly (0.25x)\n"
+            "    quarter_kelly = kelly_calc.compute_fractional_kelly(true_prob, decimal_odds, fraction=0.25)\n"
+            "    \n"
+            "    # Half Kelly (0.5x)\n"
+            "    half_kelly = kelly_calc.compute_fractional_kelly(true_prob, decimal_odds, fraction=0.5)\n"
+            "    \n"
+            "    return {\n"
+            "        **row,\n"
+            "        'full_kelly': full_kelly,\n"
+            "        'half_kelly': half_kelly,\n"
+            "        'quarter_kelly': quarter_kelly,\n"
+            "    }\n"
+            "\n"
+            "kelly_df = ev_df.apply(lambda row: pd.Series(compute_kelly_row(row.to_dict())), axis=1)\n"
+            "\n"
+            "print('Kelly fractions for each selection:')\n"
+            "print(kelly_df[['selection', 'book', 'price', 'true_prob', 'ev', 'full_kelly', 'half_kelly', 'quarter_kelly']].to_string(index=False))\n"
+            "\n"
+            "# Show only +EV bets with their Kelly fractions\n"
+            "positive_kelly = kelly_df[kelly_df['full_kelly'] > 0]\n"
+            "if not positive_kelly.empty:\n"
+            "    print(f'\\n✅ {len(positive_kelly)} selection(s) with positive Kelly:')\n"
+            "    for _, row in positive_kelly.iterrows():\n"
+            '        print(f\'  {row["selection"]} @ {row["book"]}: full_kelly={row["full_kelly"]:.4f}, \'\n'
+            '              f\'half={row["half_kelly"]:.4f}, quarter={row["quarter_kelly"]:.4f}\')'
+        )
+    )
+
+    # ── Cell 18: Section 8 — Bet sizing ──────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 8: Bet Sizing\n"
+            "\n"
+            "Given a bankroll and Kelly fraction, the actual bet size is:\n"
+            "\n"
+            "```\n"
+            "bet_size = bankroll × kelly_fraction\n"
+            "```\n"
+            "\n"
+            "The `BankrollManager` in `sportsquant.core.betting.kelly` also applies "
+            "position limits and exposure constraints."
+        )
+    )
+
+    # ── Cell 19: Bet sizing ────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 19: Compute bet sizes with BankrollManager\n"
+            "#\n"
+            "# We use a $10,000 bankroll and apply position limits.\n"
+            "\n"
+            "BANKROLL = 10_000.0\n"
+            "\n"
+            "bm = BankrollManager(bankroll=BANKROLL)\n"
+            "\n"
+            "def compute_bet_size(row: dict) -> dict:\n"
+            '    """Compute recommended bet size for a single selection."""\n'
+            "    true_prob = row['true_prob']\n"
+            "    decimal_odds = row['decimal_odds']\n"
+            "    full_kelly = row['full_kelly']\n"
+            "    \n"
+            "    # Use quarter Kelly for actual sizing (more conservative)\n"
+            "    quarter_kelly = row['quarter_kelly']\n"
+            "    \n"
+            "    if quarter_kelly > 0:\n"
+            "        bet_size = bm.compute_bet_size(\n"
+            "            kelly_fraction=quarter_kelly,\n"
+            "            odds=decimal_odds,\n"
+            "            win_probability=true_prob,\n"
+            "        )\n"
+            "    else:\n"
+            "        bet_size = 0.0\n"
+            "    \n"
+            "    return {\n"
+            "        **row,\n"
+            "        'bankroll': BANKROLL,\n"
+            "        'quarter_kelly_bet': round(bet_size, 2),\n"
+            "        'expected_profit': round(bet_size * row['ev'], 2),\n"
+            "    }\n"
+            "\n"
+            "sized_df = kelly_df.apply(lambda row: pd.Series(compute_bet_size(row.to_dict())), axis=1)\n"
+            "\n"
+            "print(f'Bankroll: ${BANKROLL:,.0f}')\n"
+            'print(f"Max position: {bm.config.exposure_limits.max_position_pct * 100:.0f}%")\n'
+            "print()\n"
+            "print('Bet sizing (quarter-Kelly):')\n"
+            "print(sized_df[['selection', 'book', 'price', 'ev', 'quarter_kelly', 'quarter_kelly_bet', 'expected_profit']].to_string(index=False))"
+        )
+    )
+
+    # ── Cell 20: Section 9 — The Edge Concept ──────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 9: The Edge Concept\n"
+            "\n"
+            "**Edge** is the difference between your estimated true probability and "
+            "the book's implied probability:\n"
+            "\n"
+            "```\n"
+            "edge = true_prob - implied_prob\n"
+            "```\n"
+            "\n"
+            "If `true_prob > implied_prob`, you have a positive edge — the book has "
+            "undervalued this outcome. The `EdgeCalculator` computes this as:\n"
+            "\n"
+            "```\n"
+            "edge = (true_prob × decimal_odds) - 1\n"
+            "```\n"
+            "\n"
+            "which is equivalent to `true_prob - implied_prob` (since `implied_prob = 1 / decimal_odds`)."
+        )
+    )
+
+    # ── Cell 21: Edge analysis ──────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 21: Detailed edge analysis\n"
+            "#\n"
+            "# We compare true_prob vs implied_prob for each selection.\n"
+            "\n"
+            "print('Edge analysis: true_prob vs. implied_prob')\n"
+            "print(f\"{'Selection':<15} {'Book':<15} {'Price':<8} {'Impl Prob':<12} {'True Prob':<12} {'Edge':<10} {'Verdict':<10}\")\n"
+            "print(f\"{'-'*15} {'-'*15} {'-'*8} {'-'*12} {'-'*12} {'-'*10} {'-'*10}\")\n"
+            "\n"
+            "for _, row in sized_df.iterrows():\n"
+            "    edge_val = row['edge']\n"
+            "    verdict = '+EDGE' if edge_val > 0 else 'NO EDGE'\n"
+            "    print(f\"{row['selection']:<15} {row['book']:<15} {row['price']:<8} \"\n"
+            "          f\"{row['implied_prob']:<12.6f} {row['true_prob']:<12.6f} {edge_val:<10.6f} {verdict:<10}\")"
+        )
+    )
+
+    # ── Cell 22: Section 10 — Put it together ──────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 10: Putting It All Together\n"
+            "\n"
+            "Let's wrap the entire pipeline into a single function that takes "
+            "(odds, true_prob, bankroll) and returns (EV, kelly_frac, bet_size)."
+        )
+    )
+
+    # ── Cell 23: Complete pipeline function ──────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 23: Complete EV + Kelly + sizing pipeline\n"
+            "\n"
+            "@dataclass\n"
+            "class BetAnalysis:\n"
+            '    """Complete analysis of a single bet opportunity."""\n'
+            "    selection: str\n"
+            "    american_odds: int\n"
+            "    decimal_odds: float\n"
+            "    implied_prob: float\n"
+            "    true_prob: float\n"
+            "    ev: float\n"
+            "    edge: float\n"
+            "    full_kelly: float\n"
+            "    quarter_kelly: float\n"
+            "    bet_size: float\n"
+            "    expected_profit: float\n"
+            "\n"
+            "\n"
+            "def analyze_bet(\n"
+            "    selection: str,\n"
+            "    american_odds: int,\n"
+            "    true_prob: float,\n"
+            "    bankroll: float = 10_000.0,\n"
+            "    kelly_fraction: float = 0.25,\n"
+            ") -> BetAnalysis:\n"
+            '    """Analyze a single bet from odds to sizing.\n'
+            "\n"
+            "    Args:\n"
+            "        selection: Name of the selection (team/player).\n"
+            "        american_odds: American odds (e.g., -110, +150).\n"
+            "        true_prob: Your estimated true probability (0-1).\n"
+            "        bankroll: Current bankroll in dollars.\n"
+            "        kelly_fraction: Fraction of Kelly to use (default 0.25 = quarter-Kelly).\n"
+            "\n"
+            "    Returns:\n"
+            "        BetAnalysis with all computed fields.\n"
+            '    """\n'
+            "    odds_obj = Odds(american=american_odds)\n"
+            "    decimal_odds = odds_obj.to_decimal()\n"
+            "    implied_prob = odds_obj.implied_prob()\n"
+            "    \n"
+            "    # EV and edge\n"
+            "    ev_val = expected_value(true_prob, odds_obj, true_prob)\n"
+            "    edge_val = edge_calc.compute_edge(true_prob, decimal_odds)\n"
+            "    \n"
+            "    # Kelly fractions\n"
+            "    full_k = kelly_calc.compute_kelly(true_prob, decimal_odds)\n"
+            "    frac_k = kelly_calc.compute_fractional_kelly(true_prob, decimal_odds, fraction=kelly_fraction)\n"
+            "    \n"
+            "    # Bet sizing\n"
+            "    bm = BankrollManager(bankroll=bankroll)\n"
+            "    bet_size = bm.compute_bet_size(\n"
+            "        kelly_fraction=frac_k,\n"
+            "        odds=decimal_odds,\n"
+            "        win_probability=true_prob,\n"
+            "    )\n"
+            "    \n"
+            "    return BetAnalysis(\n"
+            "        selection=selection,\n"
+            "        american_odds=american_odds,\n"
+            "        decimal_odds=decimal_odds,\n"
+            "        implied_prob=implied_prob,\n"
+            "        true_prob=true_prob,\n"
+            "        ev=ev_val,\n"
+            "        edge=edge_val,\n"
+            "        full_kelly=full_k,\n"
+            "        quarter_kelly=frac_k,\n"
+            "        bet_size=round(bet_size, 2),\n"
+            "        expected_profit=round(bet_size * ev_val, 2),\n"
+            "    )\n"
+            "\n"
+            "\n"
+            "# Quick test\n"
+            "result = analyze_bet('KC Chiefs', -150, true_prob=0.65, bankroll=10_000)\n"
+            "print(f'Analysis for {result.selection}:')\n"
+            "print(f'  American odds: {result.american_odds}')\n"
+            "print(f'  Decimal odds:  {result.decimal_odds:.4f}')\n"
+            "print(f'  Implied prob:  {result.implied_prob:.4f}')\n"
+            "print(f'  True prob:     {result.true_prob:.4f}')\n"
+            "print(f'  EV:            {result.ev:+.4f}')\n"
+            "print(f'  Edge:          {result.edge:+.4f} ({result.edge*100:.2f}%)')\n"
+            "print(f'  Full Kelly:    {result.full_kelly:.4f}')\n"
+            "print(f'  Quarter Kelly: {result.quarter_kelly:.4f}')\n"
+            "print(f'  Bet size:      ${result.bet_size:.2f}')\n"
+            "print(f'  Expected profit: ${result.expected_profit:.2f}')"
+        )
+    )
+
+    # ── Cell 24: Section 11 — Multiple bets portfolio ──────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Section 11: Multiple Bets — Portfolio View\n"
+            "\n"
+            "Now let's apply the full pipeline to several rows from our odds data "
+            "and build a portfolio view of all potential bets."
+        )
+    )
+
+    # ── Cell 25: Portfolio analysis ──────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 25: Build a portfolio of analyzed bets\n"
+            "#\n"
+            "# For each unique event+book combination, we analyze both sides.\n"
+            "# In practice, you'd only bet the side with +EV.\n"
+            "\n"
+            "portfolio = []\n"
+            "for _, row in prob_df.iterrows():\n"
+            "    analysis = analyze_bet(\n"
+            "        selection=row['selection'],\n"
+            "        american_odds=int(row['price']),\n"
+            "        true_prob=row['true_prob'],\n"
+            "        bankroll=10_000,\n"
+            "        kelly_fraction=0.25,\n"
+            "    )\n"
+            "    portfolio.append(analysis)\n"
+            "\n"
+            "# Build a summary DataFrame\n"
+            "portfolio_data = [{\n"
+            "    'selection': a.selection,\n"
+            "    'odds': a.american_odds,\n"
+            "    'dec_odds': f'{a.decimal_odds:.3f}',\n"
+            "    'true_prob': f'{a.true_prob:.4f}',\n"
+            "    'EV': f'{a.ev:+.4f}',\n"
+            "    'edge': f'{a.edge:+.4f}',\n"
+            "    'q_kelly': f'{a.quarter_kelly:.4f}',\n"
+            "    'bet_size': f'${a.bet_size:.2f}',\n"
+            "    'exp_profit': f'${a.expected_profit:.2f}',\n"
+            "} for a in portfolio]\n"
+            "\n"
+            "portfolio_df = pd.DataFrame(portfolio_data)\n"
+            "print('Portfolio Summary (quarter-Kelly sizing, $10K bankroll):')\n"
+            "print(portfolio_df.to_string(index=False))\n"
+            "\n"
+            "# Total expected profit\n"
+            "total_expected = sum(a.expected_profit for a in portfolio if a.ev > 0)\n"
+            "positive_bets = sum(1 for a in portfolio if a.ev > 0)\n"
+            "print(f'\\nPositive EV bets: {positive_bets}/{len(portfolio)}')\n"
+            "print(f'Total expected profit from +EV bets: ${total_expected:.2f}')"
+        )
+    )
+
+    # ── Cell 26: Exercises ─────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Exercises\n"
+            "\n"
+            "Try these on your own:\n"
+            "\n"
+            "1. **Find a +EV bet in current data** — Modify the `true_prob` values "
+            "used in the portfolio analysis. Try increasing a team's probability by 5% "
+            "and see how the EV and Kelly change. At what point does the bet become +EV?\n"
+            "\n"
+            "2. **Compare fractional Kelly strategies** — The lab uses quarter-Kelly (0.25x). "
+            "Re-run the portfolio analysis with half-Kelly (0.5x) and full Kelly (1.0x). "
+            "How do the bet sizes and expected profits change? Which strategy would you "
+            "prefer and why?\n"
+            "\n"
+            "3. **Sensitivity analysis** — Write a function that plots EV as a function "
+            "of true_prob for a given set of American odds. For odds of -110, what true "
+            "probability do you need to have a +EV bet?\n"
+            "\n"
+            "4. **Arbitrage detection** — Use `detect_arbitrage()` from "
+            "`sportsquant.core.betting.engine` to check if any of the event+book "
+            "combinations offer an arbitrage opportunity. What does an arbitrage "
+            "opportunity look like in terms of implied probabilities?\n"
+            "\n"
+            "5. **Multi-bet Kelly** — Use `KellyCalculator.compute_kelly_multi_bet()` "
+            "to calculate Kelly fractions for multiple bets at once. How does it handle "
+            "correlated bets?"
+        )
+    )
+
+    # ── Cell 27: Summary ────────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_markdown_cell(
+            "---\n"
+            "\n"
+            "## Summary\n"
+            "\n"
+            "In this lab you learned:\n"
+            "\n"
+            "- How to convert American odds to decimal odds and implied probabilities\n"
+            "- How to calculate and interpret the vig (overround)\n"
+            "- How to estimate true probability by removing the vig\n"
+            "- How to calculate Expected Value (EV) for a single bet\n"
+            "- How the Kelly Criterion determines optimal bet sizing\n"
+            "- How to apply fractional Kelly (quarter-Kelly) for risk management\n"
+            "- How to use `BankrollManager` for position-limited sizing\n"
+            "- How to build a portfolio view of multiple bets\n"
+            "\n"
+            "### Key API Reference\n"
+            "\n"
+            "| Class/Function | Module | Purpose |\n"
+            "|---|---|---|\n"
+            "| `Odds` | `sportsquant.core.betting.odds` | Convert American/decimal odds |\n"
+            "| `KellyCalculator` | `sportsquant.core.betting.kelly` | Full, fractional, adaptive Kelly |\n"
+            "| `EdgeCalculator` | `sportsquant.core.betting.kelly` | Compute edge and EV |\n"
+            "| `BankrollManager` | `sportsquant.core.betting.kelly` | Position-limited bet sizing |\n"
+            "| `expected_value()` | `sportsquant.core.betting.engine` | EV calculation |\n"
+            "| `kelly_fraction()` | `sportsquant.core.betting.engine` | Quick Kelly fraction |\n"
+            "| `american_to_decimal()` | `sportsquant.core.betting.engine` | Odds conversion |\n"
+            "| `detect_arbitrage()` | `sportsquant.core.betting.engine` | Find arb opportunities |\n"
+            "| `american_to_implied_prob()` | `sportsquant.util.time_utils` | Odds → probability |\n"
+            "\n"
+            "### Next Steps\n"
+            "\n"
+            "Continue to **Lab 04: Multi-Book Middling** to learn how to detect and "
+            "size middle opportunities across multiple sportsbooks.\n"
+            "\n"
+            "---\n"
+            "\n"
+            "*Don't forget to close the pool:*\n"
+            "```python\n"
+            "await pool.close()\n"
+            "```"
+        )
+    )
+
+    # ── Cell 28: Cleanup ────────────────────────────────────────────────
+    cells.append(
+        nbf.v4.new_code_cell(
+            "# Cell 28: Close the connection pool\n"
+            "if db_available:\n"
+            "    await pool.close()\n"
+            "    print('Connection pool closed. Lab 03 complete!')\n"
+            "else:\n"
+            "    print('Lab 03 complete! (used synthetic data, no DB connection to close)')"
+        )
+    )
+
+    nb.cells = cells
+    return nb
+
+
+def main() -> None:
+    """Build and write the notebook."""
+    nb = build()
+    nbf.write(nb, OUTPUT_PATH)
+    print(f"Written {OUTPUT_PATH} with {len(nb.cells)} cells")
+
+
+if __name__ == "__main__":
+    main()

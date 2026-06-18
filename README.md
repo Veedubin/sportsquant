@@ -1,190 +1,119 @@
-# SportsQuant
+# SportsQuant — Quantitative Sports Betting Toolkit
 
-**QuantLib for sports betting**
-A professional-grade quantitative analysis toolkit for building, backtesting, and deploying sports betting strategies.
+**Mathematical toolkit for sports betting. Bring your own data.**
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue)
+![v0.2.0](https://img.shields.io/badge/version-v0.2.0-blue)
+![Tests](https://img.shields.io/badge/tests-775_passing-brightgreen)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
-![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)
 
-SportsQuant provides the rigorous mathematical infrastructure required for institutional-grade sports trading. It is designed as a "bring your own data" framework, offering the sophisticated analytical tools needed to translate raw odds and statistics into actionable, risk-adjusted betting signals.
-
-## System Architecture
-
-```text
-[ Data Sources ]        [ Data Pipeline ]        [ Modeling Layer ]       [ Execution Layer ]
-+---------------+       +----------------+      +------------------+     +------------------+
-| Pinnacle API  | ---->  | Kafka Consumers | ---> | Prediction Models| --> | Betting Engine    |
-| Odds API      |       | Dual-Write Sync |      | Bayesian Priors   |     | Kelly Optimization|
-| NBA Stats     |       | TimescaleDB     |      | Rating Systems   |     | Risk Management   |
-| ESPN Injuries |       | Ignite Cache    |      | EV Calculation   |     | Notification Bus |
-+---------------+       +----------------+      +------------------+     +------------------+
-                                                                                  |
-                                                                                  v
-                                                                         [ Trading Interface ]
-                                                                         (CLI / Discord / API)
-```
-
-## Core Capabilities
-
-### Betting Mathematics
-Rigorous implementation of betting theory and probability:
-- **Kelly Criterion**: Comprehensive support for Standard, Fractional, and Adaptive Kelly strategies to maximize long-term logarithmic growth.
-- **Expected Value (EV)**: Precise calculation of edge based on implied probability vs. model-derived probability.
-- **Arbitrage Detection**: Real-time identification of risk-free profit opportunities across multiple sportsbooks.
-
-### Portfolio Optimization
-Institutional risk management tools to protect capital and optimize returns:
-- **Position Sizing**: Dynamic sizing based on confidence intervals and bankroll volatility.
-- **Risk Limits**: Hard and soft constraints on total exposure, sport-specific limits, and correlation caps.
-- **Market Impact**: Modeling of price slippage and market movement resulting from large bet placement.
-
-### Backtesting Framework
-Multi-generational backtesting engine for strategy validation:
-- **Walk-Forward Validation**: Rigorous out-of-sample testing to prevent overfitting.
-- **Regime-Aware Analysis**: Identification of performance shifts across different seasonal or market regimes.
-- **Sensitivity Testing**: Stress-testing strategies against varying odds and win-rate fluctuations.
-
-### Player Ratings & Bayesian Modeling
-Advanced statistical modeling for athlete and team evaluation:
-- **Rating Systems**: Implementation of RAPTOR (composite), Massey, and PageRank algorithms for hierarchical team and player ranking.
-- **Bayesian Shrinkage**: Use of James-Stein estimators to handle small sample sizes and stabilize player priors.
-- **Contextual Modeling**: Integration of matchup-specific variables and environmental factors into base ratings.
-
-### Prediction Models
-High-performance machine learning pipelines for game outcomes:
-- **XGBoost PRA**: Specialized models for Points, Rebounds, and Assists forecasting.
-- **NFL XGBoost Game Predictor**: Ensemble classifier (win probability) + two regressors (spread, total) trained on 14 team-strength features from `nflfastR` rolling aggregates.
-- **Game-Level Modeling**: Probabilistic forecasting for Spreads, Totals, and Moneylines.
-- **Simulation**: Monte Carlo engines for simulating thousands of game iterations to derive probability distributions.
-
-### NFL-Specific Modules
-Full NFL/football integration powered by `nflfastR`, ESPN, Pinnacle, and The Odds API:
-- **NFL Data Pipeline** — Unified access to nflfastR player stats, ESPN injury reports, Pinnacle sharp odds, and The Odds API multi-book feed.
-- **NFL Game Predictor** — XGBoost ensemble with save/load roundtrip and 14 hand-engineered features (PPG for/against, yards/play, QB rating, turnover rate, PPG differential, defense differential, home advantage, rest days).
-- **Multi-Book Odds Aggregator** — Parses The Odds API h2h/spreads/totals/outrights into a per-(game, bookmaker) DataFrame with strict schema.
-- **Middling Detection** — Spread and total middling strategies that find high-EV situations where two books offer materially different lines.
-- **NFL Advanced Metrics** — EPA, DVOA, QBR, ANY/A, Success Rate, CPOE approximations.
-
-### Infrastructure & Observability
-Production-ready deployment stack:
-- **Orchestration**: Full Kubernetes manifests for scalable deployment.
-- **Data Stream**: Kafka-driven pipeline for low-latency data ingestion.
-- **Storage**: TimescaleDB for high-performance time-series storage of historical odds.
-- **Monitoring**: Grafana dashboards for tracking model performance and system health.
-
-## Installation
-
-SportsQuant utilizes `uv` for high-performance dependency management.
-
-```bash
-# Install uv if not already present
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Sync dependencies
-uv sync
-```
+SportsQuant is a professional-grade quantitative analysis toolkit designed for analysts, not tipsters. Think of it as "QuantLib for sports betting"—it provides the rigorous mathematical infrastructure needed to translate raw odds and statistics into actionable, risk-adjusted betting signals.
 
 ## Quick Start
 
-The following example demonstrates calculating an optimal bet size using the Kelly Criterion.
-
-```python
-from sportsquant.core.betting import KellyCalculator, Odds
-
-# Initialize the calculator
-kelly = KellyCalculator()
-
-# Define the market odds (American format: -110)
-odds = Odds(american=-110)
-
-# Calculate optimal bet fraction given a 5% edge and $1000 bankroll
-# edge = (Model Probability * Decimal Odds) - 1
-fraction = kelly.calculate(edge=0.05, odds=odds, bankroll=1000)
-
-print(f"Optimal Kelly fraction: {fraction:.2%}")
-```
-
-### NFL Game Prediction (XGBoost)
-
-```python
-from sportsquant.data.nfl import NFLDataConfig, NFLDataPipeline
-from sportsquant.models.predictive.nfl_game_model import (
-    build_features_from_pipeline,
-    train_default_model,
-)
-
-# Train a default XGBoost predictor (synthetic bootstrap)
-predictor = train_default_model(n_games=600)
-
-# Build features from real nflfastR data
-pipeline = NFLDataPipeline(config=NFLDataConfig())
-features = build_features_from_pipeline(
-    pipeline, home_team="KC", away_team="BAL", season=2024, week=10,
-)
-
-# Predict
-prediction = predictor.predict(features)
-print(f"KC win prob: {prediction.home_win_prob:.1%}")
-print(f"Spread: {prediction.proj_spread:+.1f}")
-print(f"Total:  {prediction.proj_total:.1f}")
-```
-
-### NFL Multi-Book Odds & Middling
-
-```python
-from sportsquant.core.betting.strategies.middling import detect_middles
-
-# parse_game_lines_to_raw() flattens Odds API responses
-df = pipeline.get_multi_book_odds(api_key="...")  # h2h + spreads + totals
-middles = detect_middles(df)
-print(middles)  # spread + total middling opportunities
-```
-
-### Command-Line Interface
-
 ```bash
-# NFL-specific commands
-sportsquant nfl ev           --player "Patrick Mahomes" --stat passing_yards ...
-sportsquant nfl kelly        --edge 0.05 --odds -110 --bankroll 1000
-sportsquant nfl backtest     --csv lines.csv --walk-forward
-sportsquant nfl ratings      --season 2024 --method massey
-sportsquant nfl props        --site prizepicks --min-ev 0.05
-sportsquant nfl predict-game --home KC --away BAL --season 2024 --week 10
+# 1. Install the desktop package
+uv add sportsquant[notebook]
+
+# 2. Start the storage layer
+cd ~/Projects/Infrastructure/sportsquant
+make docker-up
+
+# 3. Open a notebook
+uv run jupyter lab labs/01_getting_started.ipynb
 ```
 
-### Web Dashboard
+## Architecture
 
-```bash
-make web  # or: uvicorn sportsquant.web.app:app --port 8080
-```
-
-Five pages: Dashboard, EV Calculator, Backtest, Power Ratings, **NFL Game Predictor**.
-Built on FastAPI + Jinja2 + Tailwind CSS (dark theme).
-
-## Package Structure
+SportsQuant v0.2.0 is decoupled into three primary layers to ensure scalability and separation of concerns:
 
 ```text
-sportsquant/
-├── src/sportsquant/
-│   ├── core/               # Mathematical engines (Betting, Risk, Backtesting)
-│   ├── models/             # ML and Statistical models (Predictive, Ratings, Analysis)
-│   ├── data/               # Ingestion and pipeline (Sources, Pipeline, Schemas)
-│   ├── api/                # FastAPI infrastructure and authentication
-│   ├── notifications/      # Alerting systems (Discord, Queue)
-│   ├── infra/              # Scheduling and polling logic
-│   ├── cli/                # Command line interfaces
-│   └── util/               # Telemetry, logging, and system metrics
-├── k8s/                    # Kubernetes orchestration manifests
-├── docker/                 # Containerization definitions
-├── docs/                   # Architecture decisions and runbooks
-└── tests/                  # Comprehensive test suite
++-----------------------+       +-------------------------------------------+
+|    Desktop Package    |       |              Docker Compose Stack         |
+| (CLI, Library, Labs)   |       | (timescaledb + poller + web dashboard)    |
++-----------+-----------+       +-------------------+-----------------------+
+            |                                       |
+            |         Data Flow                    |
+            |  [ Poller ] ----> [ TimescaleDB ] <---+
+            |       |                |
+            +-------+----------------+
+                    |
+                    v
+            [ Notebooks / CLI / Web UI ]
 ```
 
-## Documentation
+- **Desktop Package**: The core Python library providing the math, models, and CLI.
+- **Infrastructure Stack**: 
+    - `timescaledb`: High-performance time-series storage (PG 18 + TimescaleDB 2.28).
+    - `sportsquant/poller`: Background container for data collection (Odds API, ESPN).
+    - `sportsquant/web`: Operations dashboard for health monitoring and metrics.
+- **Data Flow**: The poller fetches live data $\rightarrow$ writes to TimescaleDB $\rightarrow$ consumed by the web dashboard and your analytical notebooks.
 
-Detailed technical documentation, Architecture Decision Records (ADRs), and operational runbooks are available in the `/docs` directory.
+## Features
 
-## License
+### 🧮 Betting Mathematics
+- **Expected Value (EV)**: Precise calculation including implied probability and vig removal.
+- **Kelly Criterion**: Full and fractional Kelly sizing for optimal bankroll growth.
+- **Middling Detection**: Automatic identification of multi-book spread/total middles.
 
-This project is licensed under the MIT License.
+### 📈 Predictive Modeling
+- **NFL Game Prediction**: XGBoost ensemble for win probability, spreads, and totals.
+- **Ratings Systems**: Implementation of Elo, Massey, PageRank, and Glicko systems.
+- **Custom Strategies**: Extensible registry to define, backtest, and deploy your own logic.
+
+### ⚙️ Infrastructure & Ops
+- **Backtesting Engine**: Professional walk-forward validation and parallel execution.
+- **Live Data**: Integrated polling for Odds API and ESPN injury reports.
+- **Web Ops Dashboard**: Monitor poller health, run history, log tailing, and system metrics.
+
+## Package Layout
+
+```
+sportsquant/
+├── core/           # Betting math (EV, Kelly, middling, metrics)
+├── models/         # XGBoost, ratings, predictive models
+├── backtest/       # Backtest engine
+├── data/           # Data sources (Odds API, ESPN, nflverse)
+├── infra/
+│   ├── db/         # TimescaleDB connection, schema, queries, writers
+│   └── poller/     # Background data fetcher
+├── web/            # FastAPI ops dashboard
+└── cli/            # Click commands
+
+labs/               # 10 comprehensive Jupyter walkthroughs
+docker/
+├── Dockerfile.poller
+├── Dockerfile.web
+└── init-db.sql     # TimescaleDB schema
+docker-compose.yml  # timescaledb + poller + web
+```
+
+## Running
+
+### Installation
+```bash
+uv add sportsquant[notebook]
+```
+
+### Usage
+```bash
+# Run a CLI command
+sportsquant nfl predict-game
+
+# Start the docker stack (DB, Poller, Web)
+make docker-up
+
+# Run tests
+make test
+```
+
+## Configuration
+
+```bash
+cp .env.example .env
+# Edit .env with your Odds API key
+# Then: make docker-up
+```
+
+## Disclaimer
+
+*SportsQuant is a mathematical toolkit provided for analytical purposes only. It does not provide betting advice or guaranteed returns. You are solely responsible for compliance with your local laws and regulations regarding sports wagering.*

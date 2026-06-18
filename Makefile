@@ -1,121 +1,82 @@
-.PHONY: install install-dev test lint format typecheck docs clean \
-        docker-build docker-build-web docker-build-api docker-up docker-up-web docker-up-api docker-up-full \
-        docker-down docker-down-volumes docker-logs docker-ps docker-shell \
-        k8s-deploy k8s-destroy kind-up kind-down \
-        web all
+# ─────────────────────────────────────────────────────────────────────
+# SportsQuant v0.2.0 Makefile
+# ─────────────────────────────────────────────────────────────────────
 
-# ── Install ──────────────────────────────────────────────────────────────
+.PHONY: help install install-dev install-notebook test lint format clean \
+        docker-build-base docker-build-poller docker-build-web docker-build-all \
+        docker-up docker-up-detach docker-down docker-clean docker-logs \
+        poller-once poller-status poller-logs
 
-install:
+# Default Python interpreter
+PYTHON ?= python3
+DOCKER ?= docker
+
+help:  ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-25s\033[0m %s\n", $$1, $$2}'
+
+# ── Local development ───────────────────────────────────────────────
+
+install:  ## Install core package only
 	uv sync
 
-install-dev:
-	uv sync --group dev
+install-dev:  ## Install with dev extras (linters, test tools)
+	uv sync --extra dev
 
-# ── Quality Gates ─────────────────────────────────────────────────────────
+install-notebook:  ## Install with notebook extras (jupyter, ML libs)
+	uv sync --extra notebook --extra dev
 
-test:
+test:  ## Run pytest test suite
 	uv run pytest tests/ -v
 
-lint:
-	uv run ruff check src/sportsquant/
+lint:  ## Run ruff lint
+	uv run ruff check src/
 
-format:
-	uv run ruff format src/sportsquant/
+format:  ## Format code with ruff
+	uv run ruff format src/
 
-typecheck:
-	uv run mypy src/sportsquant/
+clean:  ## Remove build artifacts
+	rm -rf dist/ build/ *.egg-info .pytest_cache .ruff_cache
 
-docs:
-	@echo "TODO: generate API docs (e.g. uv run pdoc src/sportsquant -o docs/api)"
+# ── Docker: build ───────────────────────────────────────────────────
 
-clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type d -name .ruff_cache -exec rm -rf {} +
-	rm -rf .pytest_cache .mypy_cache dist *.egg-info
+docker-build-base:  ## Build the timescaledb base image (pulled from registry, no build)
+	@echo "timescaledb uses the upstream image docker.io/timescale/timescaledb:latest-pg18 — no build needed"
 
-# ── Docker ────────────────────────────────────────────────────────────────
-# Multi-stage build; targets: web (default), api, poller, dev.
-# See docker/Dockerfile for details.
+docker-build-poller:  ## Build the poller container image
+	$(DOCKER) build -f docker/Dockerfile.poller -t sportsquant/poller:latest .
 
-docker-build: docker-build-web
+docker-build-web:  ## Build the web UI container image
+	$(DOCKER) build -f docker/Dockerfile.web -t sportsquant/web:latest .
 
-docker-build-web:
-	docker build -f docker/Dockerfile --target web -t sportsquant/web:latest .
+docker-build-all: docker-build-poller docker-build-web  ## Build both poller and web images
+	@echo "All images built. Timescaledb is pulled from registry on first run."
 
-docker-build-api:
-	docker build -f docker/Dockerfile --target api -t sportsquant/api:latest .
+# ── Docker: run ─────────────────────────────────────────────────────
 
-docker-build-poller:
-	docker build -f docker/Dockerfile --target poller -t sportsquant/poller:latest .
+docker-up:  ## Bring up the full stack (timescaledb + poller + web)
+	$(DOCKER) compose up -d
+	@echo "Web UI: http://localhost:8080"
+	@echo "TimescaleDB: localhost:5432"
 
-docker-build-all: docker-build-web docker-build-api docker-build-poller
+docker-up-detach: docker-up  ## Alias for docker-up (deprecated, kept for backwards compat)
 
-docker-up: docker-up-web
+docker-down:  ## Stop all containers and remove them
+	$(DOCKER) compose down
 
-# Web UI only (default profile). Visit http://localhost:8080
-docker-up-web:
-	docker compose --profile web up -d --build
-	@echo "Web UI:    http://localhost:8080"
-	@echo "NFL page:  http://localhost:8080/nfl-predict"
+docker-clean:  ## Stop containers AND remove volumes (deletes DB data!)
+	$(DOCKER) compose down -v
+	@echo "WARNING: All DB data has been deleted."
 
-# Web + API + Postgres. Visit http://localhost:8080 (web) and
-# http://localhost:8000/docs (REST API)
-docker-up-api:
-	docker compose --profile api up -d --build
-	@echo "Web UI:    http://localhost:8080"
-	@echo "REST API:  http://localhost:8000/docs"
+docker-logs:  ## Tail logs from all containers
+	$(DOCKER) compose logs -f
 
-# Everything: web + api + poller + postgres + redis + kafka + ignite
-docker-up-full:
-	docker compose --profile full up -d --build
-	@echo "Web UI:    http://localhost:8080"
-	@echo "REST API:  http://localhost:8000/docs"
-	@echo "Postgres:  localhost:5432"
-	@echo "Redis:     localhost:6379"
-	@echo "Kafka:     localhost:9092"
-	@echo "Ignite:    localhost:10800 (thin) / 11211 (REST)"
+# ── Docker: poller shortcuts ────────────────────────────────────────
 
-docker-down:
-	docker compose down
+poller-once:  ## Run a single poller cycle (for testing)
+	$(DOCKER) compose run --rm poller uv run sportsquant-poller once
 
-docker-down-volumes:
-	docker compose down -v
+poller-status:  ## Show poller health and run history
+	$(DOCKER) compose run --rm poller uv run sportsquant-poller status
 
-docker-logs:
-	docker compose logs -f
-
-docker-ps:
-	docker compose ps
-
-# Open a shell in the web container for debugging
-docker-shell:
-	docker compose --profile web run --rm web /bin/bash
-
-# ── Kubernetes ─────────────────────────────────────────────────────────────
-
-k8s-deploy:
-	./scripts/deploy.sh
-
-k8s-destroy:
-	kubectl delete -f k8s/ --recursive
-
-k8s-status:
-	kubectl get pods -A -l app.kubernetes.io/part-of=sportsquant
-
-# ── Kind (local dev cluster) ───────────────────────────────────────────────
-
-kind-up:
-	kind create cluster --config kind-config.yaml
-
-kind-down:
-	kind delete cluster --name sports-platform
-
-# ── Web Dashboard ───────────────────────────────────────────────────────────
-
-web:
-	uv run uvicorn sportsquant.web.app:app --host 0.0.0.0 --port 8080 --reload
-
-# ── Composite Targets ─────────────────────────────────────────────────────
-
-all: install test lint format
+poller-logs:  ## Tail the poller container logs
+	$(DOCKER) compose logs -f poller
