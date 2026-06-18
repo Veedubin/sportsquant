@@ -1,21 +1,22 @@
 """SportsQuant Web Dashboard — FastAPI + Jinja2 + uvicorn.
 
 Creates a configured FastAPI app with static file serving, Jinja2
-templates, and route handlers for dashboard, EV calculator,
-backtest results, and power ratings pages.
+templates, and route handlers for the poller ops dashboard.
 """
 
 from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
-from .paths import STATIC_DIR
-from .routes.backtest import router as backtest_router
-from .routes.dashboard import router as dashboard_router
-from .routes.ev import router as ev_router
-from .routes.nfl_predict import router as nfl_predict_router
-from .routes.ratings import router as ratings_router
+from .paths import STATIC_DIR, TEMPLATES_DIR
+from .routes.docs import router as docs_router
+from .routes.home import router as home_router
+from .routes.labs import router as labs_router
+from .routes.metrics import router as metrics_router
+from .routes.poller import router as poller_router
+from .routes.settings import router as settings_router
 
 
 def create_app() -> FastAPI:
@@ -27,15 +28,17 @@ def create_app() -> FastAPI:
         redoc_url="/api/redoc",
     )
 
-    # Static files
+    # Templates and static
+    app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-    # Routes
-    app.include_router(dashboard_router)
-    app.include_router(ev_router, prefix="/ev")
-    app.include_router(backtest_router, prefix="/backtest")
-    app.include_router(ratings_router, prefix="/ratings")
-    app.include_router(nfl_predict_router, prefix="/nfl-predict")
+    # Routes (no prefix — routes define their own paths)
+    app.include_router(home_router)  # GET /
+    app.include_router(poller_router)  # GET /poller/{name}, GET /api/poller/{name}/logs
+    app.include_router(metrics_router)  # GET /metrics
+    app.include_router(labs_router)  # GET /labs, GET /labs/{name}
+    app.include_router(docs_router)  # GET /docs
+    app.include_router(settings_router)  # GET /settings, POST /settings
 
     return app
 

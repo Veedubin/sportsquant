@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-white">Labs</h1>
+    <p class="mt-2 text-gray-400">Comprehensive Jupyter notebook walkthroughs</p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for lab in labs %}
+    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 hover:border-blue-500 transition">
+        <span class="text-xs uppercase tracking-wider text-blue-400">
+            {{ lab.id.split('_')[0] }}
+        </span>
+        <h2 class="mt-2 text-lg font-semibold text-white">{{ lab.title }}</h2>
+        <p class="mt-2 text-sm text-gray-400">{{ lab.description }}</p>
+        <a href="/labs/{{ lab.id }}"
+           class="inline-block mt-4 text-blue-400 hover:text-blue-300 transition text-sm font-medium">
+            Open Lab &rarr;
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1.6
+# ─────────────────────────────────────────────────────────────────────
+# SportsQuant Poller Image
+# Target size: ~300 MB
+# Installs: sportsquant[poller] (prefect, asyncpg, httpx, prometheus-client)
+# Does NOT install: scipy, xgboost, sklearn, fastapi, jupyter
+# Runs: sportsquant-poller (dispatcher between prefect and cron modes)
+# ─────────────────────────────────────────────────────────────────────
+
+FROM docker.io/library/python:3.12-slim
+
+# uv: fast Python package manager. Pinned for reproducibility.
+COPY --from=ghcr.io/astral-sh/uv:0.4.18 /uv /uvx /usr/local/bin/
+
+WORKDIR /app
+
+# System deps: ca-certificates only. NO build tools, NO chromium.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only the manifest first so Docker can cache the install layer.
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies only (no project yet) for better layer caching.
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install poller extra (prefect, asyncpg, httpx, prometheus-client)
+# --no-install-project: install deps only, project comes next
+RUN uv sync --frozen --no-install-project --extra poller
+
+# Now copy the source and install the project itself.
+# README.md is required by hatchling (the build backend) so it must
+# land before `uv sync` re-runs.
+COPY README.md ./
+COPY src/ ./src/
+
+# Install the project itself (re-uses cached deps from previous layer)
+RUN uv sync --frozen --extra poller
+
+# Health check: poller is healthy if we can import the main module
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 --start-period=30s \
+    CMD python -c "import sportsquant.infra.poller.main" || exit 1
+
+# Default to cron mode (Prefect needs separate API server; cron works out of the box)
+# Override with: docker run -e SPORTSQUANT_POLLER_SCHEDULER=prefect
+ENV SPORTSQUANT_POLLER_SCHEDULER=cron
+
+# Run the poller in the foreground
+CMD ["uv", "run", "sportsquant-poller", "start"]

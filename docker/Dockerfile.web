@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1.6
+# ─────────────────────────────────────────────────────────────────────
+# SportsQuant Web UI Image (Ops Dashboard)
+# Target size: ~200 MB
+# Installs: sportsquant[web] (fastapi, jinja2, asyncpg, nbconvert, markdown)
+# Does NOT install: scipy, xgboost, sklearn, prefect
+# Runs: uvicorn sportsquant.web.app:app on :8080
+# ─────────────────────────────────────────────────────────────────────
+
+FROM docker.io/library/python:3.12-slim
+
+# uv: fast Python package manager. Pinned for reproducibility.
+COPY --from=ghcr.io/astral-sh/uv:0.4.18 /uv /uvx /usr/local/bin/
+
+WORKDIR /app
+
+# System deps: ca-certificates + curl (for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only the manifest first so Docker can cache the install layer.
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies only (no project yet) for better layer caching.
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install web extra (fastapi, uvicorn, jinja2, asyncpg, nbconvert, markdown)
+# --no-install-project: install deps only, project comes next
+RUN uv sync --frozen --no-install-project --extra web
+
+# Now copy the source and install the project itself.
+# README.md is required by hatchling (the build backend) so it must
+# land before `uv sync` re-runs.
+COPY README.md ./
+COPY src/ ./src/
+
+# Install the project itself (re-uses cached deps from previous layer)
+RUN uv sync --frozen --extra web
+
+# Expose port 8080 for the web UI
+EXPOSE 8080
+
+# Health check: web is healthy if the home page returns 200
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10s \
+    CMD curl -fsS http://localhost:8080/ || exit 1
+
+# Run the web UI in the foreground
+CMD ["uv", "run", "uvicorn", "sportsquant.web.app:app", \
+     "--host", "0.0.0.0", "--port", "8080"]

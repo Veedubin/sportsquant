@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-8">
+    <a href="/" class="text-green-400 hover:text-green-300 text-sm transition">&larr; All Pollers</a>
+    <h1 class="text-3xl font-bold text-white mt-2">{{ poller_name }}</h1>
+    <p class="mt-1 text-gray-400">Poller detail &mdash; runs, stats, and logs</p>
+</div>
+
+{# ── Summary Stats ────────────────────────────────────── #}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+    <div class="rounded-lg border border-gray-700 bg-gray-800 p-5">
+        <dt class="text-gray-400 text-sm">Success Rate (7d)</dt>
+        <dd class="mt-1 text-2xl font-semibold
+            {% if rate and rate.success_rate >= 0.9 %}text-green-400
+            {% elif rate and rate.success_rate >= 0.7 %}text-yellow-400
+            {% elif rate %}text-red-400
+            {% else %}text-gray-500{% endif %}">
+            {% if rate and rate.success_rate is not none %}
+                {{ "%.1f" | format(rate.success_rate * 100) }}%
+            {% else %}
+                &mdash;
+            {% endif %}
+        </dd>
+    </div>
+
+    <div class="rounded-lg border border-gray-700 bg-gray-800 p-5">
+        <dt class="text-gray-400 text-sm">Avg Duration</dt>
+        <dd class="mt-1 text-2xl font-semibold text-white">
+            {% if rate and rate.avg_duration_seconds is not none %}
+                {{ "%.1f" | format(rate.avg_duration_seconds) }}s
+            {% else %}
+                &mdash;
+            {% endif %}
+        </dd>
+    </div>
+
+    <div class="rounded-lg border border-gray-700 bg-gray-800 p-5">
+        <dt class="text-gray-400 text-sm">Total Rows (7d)</dt>
+        <dd class="mt-1 text-2xl font-semibold text-white">
+            {% if rate and rate.total_rows_written is not none %}
+                {{ "{:,}".format(rate.total_rows_written) }}
+            {% else %}
+                &mdash;
+            {% endif %}
+        </dd>
+    </div>
+</div>
+
+{# ── Run History ──────────────────────────────────────── #}
+<section class="mb-8">
+    <h2 class="text-xl font-semibold text-white mb-4">Run History</h2>
+    {% if runs %}
+    <div class="overflow-x-auto rounded-lg border border-gray-700">
+        <table class="table-auto w-full text-sm">
+            <thead class="bg-gray-800 text-gray-400">
+                <tr>
+                    <th class="px-4 py-2 text-left">ID</th>
+                    <th class="px-4 py-2 text-left">Started</th>
+                    <th class="px-4 py-2 text-left">Finished</th>
+                    <th class="px-4 py-2 text-left">Status</th>
+                    <th class="px-4 py-2 text-right">Rows</th>
+                    <th class="px-4 py-2 text-right">Duration</th>
+                    <th class="px-4 py-2 text-left">Error</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                {% for run in runs %}
+                <tr class="hover:bg-gray-750 transition">
+                    <td class="px-4 py-2 font-mono text-xs text-gray-300">{{ run.id }}</td>
+                    <td class="px-4 py-2 font-mono text-xs text-gray-300">{{ run.started_at or '—' }}</td>
+                    <td class="px-4 py-2 font-mono text-xs text-gray-300">{{ run.finished_at or '—' }}</td>
+                    <td class="px-4 py-2 text-xs">
+                        {% if run.status == 'success' %}
+                        <span class="text-green-400">success</span>
+                        {% elif run.status == 'failed' %}
+                        <span class="text-red-400">failed</span>
+                        {% elif run.status == 'running' %}
+                        <span class="text-blue-400">running</span>
+                        {% else %}
+                        <span class="text-gray-400">{{ run.status or '—' }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2 text-right text-gray-300">{{ "{:,}".format(run.rows_written) if run.rows_written is not none else '—' }}</td>
+                    <td class="px-4 py-2 text-right text-gray-300">
+                        {% if run.started_at and run.finished_at %}
+                            {{ "%.1f".format(run.duration_seconds) if run.duration_seconds is defined else '—' }}
+                        {% else %}
+                            &mdash;
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2 text-xs font-mono text-red-300 truncate max-w-xs">{{ run.error or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-8">
+        <p class="text-gray-400">No run history available for this poller.</p>
+    </div>
+    {% endif %}
+</section>
+
+{# ── Log Tail ────────────────────────────────────────── #}
+<section class="mb-8">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold text-white">Logs</h2>
+        <button onclick="refreshLogs()"
+                class="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Refresh
+        </button>
+    </div>
+
+    <div id="log-tail" class="font-mono text-xs bg-gray-900 p-4 rounded-lg border border-gray-700 max-h-96 overflow-y-auto">
+        {% if logs %}
+            {% for log in logs %}
+            <div class="text-gray-400 leading-relaxed">
+                <span class="text-gray-500">[{{ log.ts }}]</span>
+                {% if log.level == 'ERROR' %}
+                <span class="text-red-400">[{{ log.level }}]</span>
+                {% elif log.level == 'WARNING' %}
+                <span class="text-yellow-400">[{{ log.level }}]</span>
+                {% elif log.level == 'INFO' %}
+                <span class="text-green-400">[{{ log.level }}]</span>
+                {% elif log.level == 'DEBUG' %}
+                <span class="text-gray-600">[{{ log.level }}]</span>
+                {% else %}
+                <span>[{{ log.level }}]</span>
+                {% endif %}
+                {{ log.message }}
+            </div>
+            {% endfor %}
+        {% else %}
+        <div class="text-gray-500 text-center py-4">No log entries found.</div>
+        {% endif %}
+    </div>
+</section>
+
+<script>
+let maxLogId = {{ logs[-1].id if logs else 0 }};
+
+async function refreshLogs() {
+    try {
+        const response = await fetch(`/api/poller/{{ poller_name }}/logs?since=${maxLogId}`);
+        const data = await response.json();
+        const logTail = document.getElementById('log-tail');
+        for (const log of data.logs) {
+            const div = document.createElement('div');
+            div.className = 'text-gray-400 leading-relaxed';
+
+            let levelClass = '';
+            if (log.level === 'ERROR') levelClass = 'text-red-400';
+            else if (log.level === 'WARNING') levelClass = 'text-yellow-400';
+            else if (log.level === 'INFO') levelClass = 'text-green-400';
+            else if (log.level === 'DEBUG') levelClass = 'text-gray-600';
+
+            div.innerHTML = `<span class="text-gray-500">[${log.ts}]</span> <span class="${levelClass}">[${log.level}]</span> ${log.message}`;
+            logTail.prepend(div);
+            if (log.id > maxLogId) maxLogId = log.id;
+        }
+    } catch (err) {
+        console.error('Failed to refresh logs:', err);
+    }
+}
+</script>
+{% endblock %}

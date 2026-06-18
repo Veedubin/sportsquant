@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-white">Settings</h1>
+    <p class="mt-2 text-gray-400">Current configuration (read-only — edit via env vars or docker-compose)</p>
+</div>
+
+<div class="bg-blue-500/20 text-blue-300 border border-blue-500/30 p-4 rounded-lg mb-8">
+    <p class="text-sm">
+        Settings are configured via environment variables. See <code class="font-mono text-blue-200">.env.example</code> for available options.
+    </p>
+</div>
+
+<!-- Database -->
+<div class="bg-gray-800 p-6 rounded-lg mb-6">
+    <h2 class="text-xl font-semibold text-white mb-4">Database</h2>
+    <dl class="grid grid-cols-2 gap-2 text-sm">
+        <dt class="text-gray-400">Host</dt>
+        <dd class="text-gray-200">{{ db_display.host }}</dd>
+
+        <dt class="text-gray-400">Port</dt>
+        <dd class="text-gray-200">{{ db_display.port }}</dd>
+
+        <dt class="text-gray-400">User</dt>
+        <dd class="text-gray-200">{{ db_display.user }}</dd>
+
+        <dt class="text-gray-400">Password</dt>
+        <dd class="font-mono text-yellow-400">{{ db_display.password }}</dd>
+
+        <dt class="text-gray-400">Database</dt>
+        <dd class="text-gray-200">{{ db_display.database }}</dd>
+    </dl>
+</div>
+
+<!-- Scheduler -->
+<div class="bg-gray-800 p-6 rounded-lg mb-6">
+    <h2 class="text-xl font-semibold text-white mb-4">Scheduler</h2>
+    <dl class="grid grid-cols-2 gap-2 text-sm">
+        <dt class="text-gray-400">Scheduler</dt>
+        <dd class="text-gray-200">{{ scheduler }}</dd>
+
+        <dt class="text-gray-400">Active sports</dt>
+        <dd class="text-gray-200">
+            {% for sport in active_sports %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/30 mr-1">
+                {{ sport }}
+            </span>
+            {% endfor %}
+        </dd>
+
+        <dt class="text-gray-400">Log level</dt>
+        <dd class="text-gray-200">{{ log_level }}</dd>
+    </dl>
+</div>
+
+<!-- Poller -->
+<div class="bg-gray-800 p-6 rounded-lg mb-6">
+    <h2 class="text-xl font-semibold text-white mb-4">Poller</h2>
+    <dl class="grid grid-cols-2 gap-2 text-sm">
+        <dt class="text-gray-400">Max retries</dt>
+        <dd class="text-gray-200">{{ max_retries }}</dd>
+
+        <dt class="text-gray-400">Retry delay</dt>
+        <dd class="text-gray-200">{{ retry_delay }}s</dd>
+    </dl>
+</div>
+
+<!-- Odds API -->
+<div class="bg-gray-800 p-6 rounded-lg mb-6">
+    <h2 class="text-xl font-semibold text-white mb-4">Odds API</h2>
+    <dl class="grid grid-cols-2 gap-2 text-sm">
+        <dt class="text-gray-400">API key</dt>
+        <dd class="font-mono text-yellow-400">{{ odds_api_display.api_key }}</dd>
+
+        <dt class="text-gray-400">Base URL</dt>
+        <dd class="text-gray-200 font-mono text-xs">{{ odds_api_display.base_url }}</dd>
+
+        <dt class="text-gray-400">Regions</dt>
+        <dd class="text-gray-200">{{ odds_api_display.regions }}</dd>
+
+        <dt class="text-gray-400">Markets</dt>
+        <dd class="text-gray-200">{{ odds_api_display.markets }}</dd>
+
+        <dt class="text-gray-400">Interval</dt>
+        <dd class="text-gray-200">{{ odds_api_display.interval_seconds }}s</dd>
+    </dl>
+</div>
+
+<!-- ESPN -->
+<div class="bg-gray-800 p-6 rounded-lg mb-6">
+    <h2 class="text-xl font-semibold text-white mb-4">ESPN</h2>
+    <dl class="grid grid-cols-2 gap-2 text-sm">
+        <dt class="text-gray-400">Base URL</dt>
+        <dd class="text-gray-200 font-mono text-xs">{{ espn_display.base_url }}</dd>
+
+        <dt class="text-gray-400">Interval</dt>
+        <dd class="text-gray-200">{{ espn_display.interval_seconds }}s</dd>
+    </dl>
+</div>
+{% endblock %}

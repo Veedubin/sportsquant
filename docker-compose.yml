@@ -1,19 +1,3 @@
-# ─────────────────────────────────────────────────────────────────────
-# SportsQuant Docker Compose
-#
-# Three profiles for different use cases:
-#
-#   docker compose --profile web up        # Web UI only (default for dev)
-#   docker compose --profile api up        # Web + REST API + backing services
-#   docker compose --profile full up       # Everything: web, api, poller,
-#                                          #   postgres, kafka, redis, ignite
-#   docker compose down -v                 # Stop + remove volumes
-#
-# Quick start (web only):
-#   docker compose up --build
-#   # → http://localhost:8080
-# ─────────────────────────────────────────────────────────────────────
-
 name: sportsquant
 
 x-logging: &default-logging
@@ -22,169 +6,85 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
-  # ── Web Dashboard (FastAPI + Jinja2 + Tailwind) ────────────────────
-  # Default target of the multi-stage Dockerfile. Serves the dashboard
-  # at :8080, including the new /nfl-predict page.
-  web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: web
-    image: sportsquant/web:latest
-    container_name: sportsquant-web
-    ports:
-      - "8080:8080"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    volumes:
-      # Mount source for live reload in dev. Comment out in production.
-      - ./src:/app/src:ro
-      - ./notebooks:/app/notebooks:ro
-      - ./data:/app/data
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    profiles: [web, api, full]
-    logging: *default-logging
-
-  # ── REST API (sportsquant-api) ─────────────────────────────────────
-  # Production-style FastAPI service. Exposed on :8000. In the web
-  # profile we still include the web UI; the api profile adds this.
-  api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: api
-    image: sportsquant/api:latest
-    container_name: sportsquant-api
-    ports:
-      - "8000:8000"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - OTEL_SERVICE_NAME=sportsquant-api
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-    volumes:
-      - ./src:/app/src:ro
-      - ./data:/app/data
-    depends_on:
-      web:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-        required: false
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-    profiles: [api, full]
-    logging: *default-logging
-
-  # ── Background Poller (sportsquant-poller) ─────────────────────────
-  # Stub - the poller module is not yet fully implemented. Kept here
-  # so the compose file documents the intended service and compose
-  # 'full' profile is self-documenting.
-  poller:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: poller
-    image: sportsquant/poller:latest
-    container_name: sportsquant-poller
-    environment:
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - ODDS_API_KEY=${ODDS_API_KEY:-}
-    depends_on:
-      kafka:
-        condition: service_started
-        required: false
-      postgres:
-        condition: service_healthy
-        required: false
-    profiles: [full]
-    restart: unless-stopped
-    logging: *default-logging
-
-  # ── PostgreSQL with TimescaleDB ────────────────────────────────────
-  # Optional backing store for time-series odds data. Healthy before
-  # dependent services start.
-  postgres:
-    image: timescale/timescaledb:latest-pg16
-    container_name: sportsquant-postgres
+  timescaledb:
+    image: docker.io/timescale/timescaledb:latest-pg18
+    container_name: sportsquant-timescaledb
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-sportsquant}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sportsquant}
-      - POSTGRES_DB=${POSTGRES_DB:-sportsquant}
+      POSTGRES_USER: ${SPORTSQUANT_DB_USER:-sportsquant}
+      POSTGRES_PASSWORD: ${SPORTSQUANT_DB_PASSWORD:-sportsquant}
+      POSTGRES_DB: ${SPORTSQUANT_DB_NAME:-sportsquant}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - timescaledb_data:/var/lib/postgresql
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    profiles: [api, full]
+      start_period: 15s
+    restart: unless-stopped
     logging: *default-logging
 
-  # ── Redis (caching layer) ──────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: sportsquant-redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    profiles: [full]
-    logging: *default-logging
-
-  # ── Apache Kafka (event bus for odds/stats streams) ────────────────
-  kafka:
-    image: bitnami/kafka:3.7
-    container_name: sportsquant-kafka
-    ports:
-      - "9092:9092"
+  # ── Poller (Prefect/cron-based odds/injuries fetcher) ──────────────
+  poller:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.poller
+    image: sportsquant/poller:latest
+    container_name: sportsquant-poller
     environment:
-      - ALLOW_PLAINTEXT_LISTENER=yes
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-    volumes:
-      - kafka_data:/bitnami/kafka
-    profiles: [full]
+      PYTHONUNBUFFERED: "1"
+      SPORTSQUANT_DB_HOST: timescaledb
+      SPORTSQUANT_DB_PORT: "5432"
+      SPORTSQUANT_DB_USER: ${SPORTSQUANT_DB_USER:-sportsquant}
+      SPORTSQUANT_DB_PASSWORD: ${SPORTSQUANT_DB_PASSWORD:-sportsquant}
+      SPORTSQUANT_DB_NAME: ${SPORTSQUANT_DB_NAME:-sportsquant}
+      SPORTSQUANT_POLLER_SCHEDULER: ${SPORTSQUANT_POLLER_SCHEDULER:-cron}
+      SPORTSQUANT_POLLER_ACTIVE_SPORTS: ${SPORTSQUANT_POLLER_ACTIVE_SPORTS:-nfl,nba}
+      SPORTSQUANT_POLLER_LOG_LEVEL: ${SPORTSQUANT_POLLER_LOG_LEVEL:-INFO}
+      SPORTSQUANT_POLLER_ODDS_API_KEY: ${SPORTSQUANT_POLLER_ODDS_API_KEY:-}
+      SPORTSQUANT_POLLER_ODDS_API_INTERVAL_SECONDS: ${SPORTSQUANT_POLLER_ODDS_API_INTERVAL_SECONDS:-86400}
+      SPORTSQUANT_POLLER_ESPN_INJURIES_INTERVAL_SECONDS: ${SPORTSQUANT_POLLER_ESPN_INJURIES_INTERVAL_SECONDS:-900}
+      SPORTSQUANT_POLLER_MAX_RETRIES: ${SPORTSQUANT_POLLER_MAX_RETRIES:-3}
+      SPORTSQUANT_POLLER_RETRY_DELAY: ${SPORTSQUANT_POLLER_RETRY_DELAY:-30}
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
     logging: *default-logging
 
-  # ── Apache Ignite (in-memory cache) ────────────────────────────────
-  ignite:
-    image: apacheignite/ignite:latest
-    container_name: sportsquant-ignite
+  # ── Web UI (Ops Dashboard) ────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    image: sportsquant/web:latest
+    container_name: sportsquant-web
     ports:
-      - "10800:10800"  # thin client
-      - "11211:11211"  # REST/HTTP
-    profiles: [full]
+      - "8080:8080"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      SPORTSQUANT_DB_HOST: timescaledb
+      SPORTSQUANT_DB_PORT: "5432"
+      SPORTSQUANT_DB_USER: ${SPORTSQUANT_DB_USER:-sportsquant}
+      SPORTSQUANT_DB_PASSWORD: ${SPORTSQUANT_DB_PASSWORD:-sportsquant}
+      SPORTSQUANT_DB_NAME: ${SPORTSQUANT_DB_NAME:-sportsquant}
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
     logging: *default-logging
 
 volumes:
-  postgres_data:
-    driver: local
-  kafka_data:
+  timescaledb_data:
     driver: local
 
 networks:

@@ -12,3 +12,6 @@ from pathlib import Path
 WEB_DIR = Path(__file__).resolve().parent
 STATIC_DIR = WEB_DIR / "static"
 TEMPLATES_DIR = WEB_DIR / "templates"
+
+LABS_HTML_DIR = STATIC_DIR / "labs"
+LABS_HTML_DIR.mkdir(parents=True, exist_ok=True)

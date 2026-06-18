@@ -13,11 +13,11 @@
         <div class="max-w-6xl mx-auto flex items-center justify-between">
             <a href="/" class="text-xl font-bold text-green-400 hover:text-green-300 transition">SportsQuant</a>
             <div class="flex gap-6 text-sm">
-                <a href="/" class="hover:text-green-400 transition {% if page_title == 'Dashboard' %}text-green-400{% else %}text-gray-300{% endif %}">Dashboard</a>
-                <a href="/ev" class="hover:text-green-400 transition {% if page_title == 'EV Calculator' %}text-green-400{% else %}text-gray-300{% endif %}">EV Calculator</a>
-                <a href="/backtest" class="hover:text-green-400 transition {% if page_title == 'Backtest' %}text-green-400{% else %}text-gray-300{% endif %}">Backtest</a>
-                <a href="/ratings" class="hover:text-green-400 transition {% if page_title == 'Power Ratings' %}text-green-400{% else %}text-gray-300{% endif %}">Ratings</a>
-                <a href="/nfl-predict" class="hover:text-green-400 transition {% if page_title == 'NFL Game Predictor' %}text-green-400{% else %}text-gray-300{% endif %}">NFL Predict</a>
+                <a href="/" class="hover:text-green-400 transition {% if request.url.path == '/' %}text-green-400{% else %}text-gray-300{% endif %}">Home</a>
+                <a href="/metrics" class="hover:text-green-400 transition {% if request.url.path == '/metrics' %}text-green-400{% else %}text-gray-300{% endif %}">Metrics</a>
+                <a href="/labs" class="hover:text-green-400 transition {% if '/labs' in request.url.path %}text-green-400{% else %}text-gray-300{% endif %}">Labs</a>
+                <a href="/docs" class="hover:text-green-400 transition {% if request.url.path == '/docs' %}text-green-400{% else %}text-gray-300{% endif %}">Docs</a>
+                <a href="/settings" class="hover:text-green-400 transition {% if request.url.path == '/settings' %}text-green-400{% else %}text-gray-300{% endif %}">Settings</a>
             </div>
         </div>
     </nav>
