@@ -58,8 +58,8 @@ coverage.xml
 # Ruff
 .ruff_cache/
 
-# uv
-uv.lock
+# uv (kept in repo for reproducible CI builds)
+# uv.lock
 
 # Docker
 docker-compose.override.yml
