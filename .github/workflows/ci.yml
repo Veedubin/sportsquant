@@ -15,8 +15,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
-      - run: uv run ruff check src/ tests/
-      - run: uv run ruff format --check src/ tests/
+      - run: uv run --no-cache ruff check src/ tests/
+      - run: uv run --no-cache ruff format --check src/ tests/
 
   test:
     needs: lint
@@ -37,10 +37,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --extra notebook --extra dev
       - run: uv pip install jupyter nbconvert
       - run: |
-          for nb in notebooks/common/*.ipynb notebooks/basketball/*.ipynb notebooks/football/*.ipynb; do
+          for nb in labs/*.ipynb; do
             echo "Executing: $nb"
             uv run jupyter nbconvert --to notebook --execute --inplace "$nb" --ExecutePreprocessor.timeout=120 --allow-errors || echo "WARNING: $nb execution failed (may need real data)"
           done
