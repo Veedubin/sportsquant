@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────────────────
+# .dockerignore — keep the build context small and the image clean.
+# ─────────────────────────────────────────────────────────────────────
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python build artifacts
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+*.egg
+dist
+build
+.eggs
+.installed.cfg
+*.egg-link
+
+# Test artifacts
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+.tox
+.nox
+coverage.xml
+*.cover
+.hypothesis
+
+# Virtualenvs
+.venv
+venv
+env/
+.python-version
+
+# Node / JS (not used in Python image)
+node_modules
+
+# IDE / editor
+.idea
+.vscode
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docker artifacts (don't recurse)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation that's already generated
+docs/_build
+
+# Local data and caches
+data/analysis/*.db
+data/analysis/cache/
+cache/
+notebooks/football/cache/
+
+# Notebooks output (regenerated on demand)
+notebooks/.ipynb_checkpoints
+
+# Old/orphaned Dockerfiles and scripts not needed in the image
+docker/kafka-ignite-consumer.dockerfile
+docker/nba-stats.Dockerfile
+docker/Nvidia-Spark-RAPIDS-ubuntu.dockerfile
+docker/patch_execution_api.py
+docker/sports-platform.dockerfile
+docker/test_patch.py
+
+# k8s manifests (deploy-time, not image-time)
+k8s/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Test fixtures that bloat the image
+tests/fixtures/large_*

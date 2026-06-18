@@ -1,5 +1,6 @@
 .PHONY: install install-dev test lint format typecheck docs clean \
-        docker-build docker-up docker-down \
+        docker-build docker-build-web docker-build-api docker-up docker-up-web docker-up-api docker-up-full \
+        docker-down docker-down-volumes docker-logs docker-ps docker-shell \
         k8s-deploy k8s-destroy kind-up kind-down \
         web all
 
@@ -34,18 +35,62 @@ clean:
 	rm -rf .pytest_cache .mypy_cache dist *.egg-info
 
 # ── Docker ────────────────────────────────────────────────────────────────
+# Multi-stage build; targets: web (default), api, poller, dev.
+# See docker/Dockerfile for details.
 
-docker-build:
-	docker build -f docker/Dockerfile -t sportsquant:latest .
+docker-build: docker-build-web
 
-docker-up:
-	docker compose up -d
+docker-build-web:
+	docker build -f docker/Dockerfile --target web -t sportsquant/web:latest .
+
+docker-build-api:
+	docker build -f docker/Dockerfile --target api -t sportsquant/api:latest .
+
+docker-build-poller:
+	docker build -f docker/Dockerfile --target poller -t sportsquant/poller:latest .
+
+docker-build-all: docker-build-web docker-build-api docker-build-poller
+
+docker-up: docker-up-web
+
+# Web UI only (default profile). Visit http://localhost:8080
+docker-up-web:
+	docker compose --profile web up -d --build
+	@echo "Web UI:    http://localhost:8080"
+	@echo "NFL page:  http://localhost:8080/nfl-predict"
+
+# Web + API + Postgres. Visit http://localhost:8080 (web) and
+# http://localhost:8000/docs (REST API)
+docker-up-api:
+	docker compose --profile api up -d --build
+	@echo "Web UI:    http://localhost:8080"
+	@echo "REST API:  http://localhost:8000/docs"
+
+# Everything: web + api + poller + postgres + redis + kafka + ignite
+docker-up-full:
+	docker compose --profile full up -d --build
+	@echo "Web UI:    http://localhost:8080"
+	@echo "REST API:  http://localhost:8000/docs"
+	@echo "Postgres:  localhost:5432"
+	@echo "Redis:     localhost:6379"
+	@echo "Kafka:     localhost:9092"
+	@echo "Ignite:    localhost:10800 (thin) / 11211 (REST)"
 
 docker-down:
 	docker compose down
 
+docker-down-volumes:
+	docker compose down -v
+
 docker-logs:
 	docker compose logs -f
+
+docker-ps:
+	docker compose ps
+
+# Open a shell in the web container for debugging
+docker-shell:
+	docker compose --profile web run --rm web /bin/bash
 
 # ── Kubernetes ─────────────────────────────────────────────────────────────
 
