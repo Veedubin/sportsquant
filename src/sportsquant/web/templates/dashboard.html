@@ -29,7 +29,7 @@
 </div>
 
 <h2 class="text-xl font-bold mb-4">Quick Tools</h2>
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
     <a href="/ev" class="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:border-green-500 transition block">
         <h3 class="text-lg font-bold text-green-400">EV Calculator</h3>
         <p class="text-sm text-gray-400 mt-2">Compute expected value and Kelly criterion for any bet.</p>
@@ -42,5 +42,23 @@
         <h3 class="text-lg font-bold text-yellow-400">Power Ratings</h3>
         <p class="text-sm text-gray-400 mt-2">Compute Massey and PageRank ratings for any sport.</p>
     </a>
+    <a href="/nfl-predict" class="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:border-purple-500 transition block">
+        <h3 class="text-lg font-bold text-purple-400">NFL Predict</h3>
+        <p class="text-sm text-gray-400 mt-2">XGBoost ensemble: win probability, spread, total.</p>
+    </a>
 </div>
+
+{% if stats.nfl_modules %}
+<h2 class="text-xl font-bold mb-4">NFL Modules</h2>
+<div class="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
+    <ul class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        {% for module in stats.nfl_modules %}
+        <li class="flex items-start">
+            <span class="text-green-400 mr-2">▸</span>
+            <span class="text-gray-300">{{ module }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
 {% endblock %}

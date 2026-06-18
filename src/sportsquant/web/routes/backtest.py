@@ -19,8 +19,9 @@ _templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 async def backtest_form(request: Request) -> HTMLResponse:
     """Render the backtest form with no results."""
     return _templates.TemplateResponse(
+        request,
         "backtest.html",
-        {"request": request, "result": None, "page_title": "Backtest"},
+        {"result": None, "page_title": "Backtest"},
     )
 
 
@@ -95,6 +96,7 @@ async def backtest_run(
         result = {"error": str(e)}
 
     return _templates.TemplateResponse(
+        request,
         "backtest.html",
-        {"request": request, "result": result, "page_title": "Backtest"},
+        {"result": result, "page_title": "Backtest"},
     )

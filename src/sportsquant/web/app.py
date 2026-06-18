@@ -14,6 +14,7 @@ from .paths import STATIC_DIR
 from .routes.backtest import router as backtest_router
 from .routes.dashboard import router as dashboard_router
 from .routes.ev import router as ev_router
+from .routes.nfl_predict import router as nfl_predict_router
 from .routes.ratings import router as ratings_router
 
 
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(ev_router, prefix="/ev")
     app.include_router(backtest_router, prefix="/backtest")
     app.include_router(ratings_router, prefix="/ratings")
+    app.include_router(nfl_predict_router, prefix="/nfl-predict")
 
     return app
 

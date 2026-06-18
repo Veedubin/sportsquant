@@ -60,9 +60,9 @@ async def ratings_page(request: Request) -> HTMLResponse:
     }
 
     return _templates.TemplateResponse(
+        request,
         "ratings.html",
         {
-            "request": request,
             "ratings": sample_ratings,
             "page_title": "Power Ratings",
         },

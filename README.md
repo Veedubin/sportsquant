@@ -54,8 +54,17 @@ Advanced statistical modeling for athlete and team evaluation:
 ### Prediction Models
 High-performance machine learning pipelines for game outcomes:
 - **XGBoost PRA**: Specialized models for Points, Rebounds, and Assists forecasting.
+- **NFL XGBoost Game Predictor**: Ensemble classifier (win probability) + two regressors (spread, total) trained on 14 team-strength features from `nflfastR` rolling aggregates.
 - **Game-Level Modeling**: Probabilistic forecasting for Spreads, Totals, and Moneylines.
 - **Simulation**: Monte Carlo engines for simulating thousands of game iterations to derive probability distributions.
+
+### NFL-Specific Modules
+Full NFL/football integration powered by `nflfastR`, ESPN, Pinnacle, and The Odds API:
+- **NFL Data Pipeline** — Unified access to nflfastR player stats, ESPN injury reports, Pinnacle sharp odds, and The Odds API multi-book feed.
+- **NFL Game Predictor** — XGBoost ensemble with save/load roundtrip and 14 hand-engineered features (PPG for/against, yards/play, QB rating, turnover rate, PPG differential, defense differential, home advantage, rest days).
+- **Multi-Book Odds Aggregator** — Parses The Odds API h2h/spreads/totals/outrights into a per-(game, bookmaker) DataFrame with strict schema.
+- **Middling Detection** — Spread and total middling strategies that find high-EV situations where two books offer materially different lines.
+- **NFL Advanced Metrics** — EPA, DVOA, QBR, ANY/A, Success Rate, CPOE approximations.
 
 ### Infrastructure & Observability
 Production-ready deployment stack:
@@ -95,6 +104,63 @@ fraction = kelly.calculate(edge=0.05, odds=odds, bankroll=1000)
 
 print(f"Optimal Kelly fraction: {fraction:.2%}")
 ```
+
+### NFL Game Prediction (XGBoost)
+
+```python
+from sportsquant.data.nfl import NFLDataConfig, NFLDataPipeline
+from sportsquant.models.predictive.nfl_game_model import (
+    build_features_from_pipeline,
+    train_default_model,
+)
+
+# Train a default XGBoost predictor (synthetic bootstrap)
+predictor = train_default_model(n_games=600)
+
+# Build features from real nflfastR data
+pipeline = NFLDataPipeline(config=NFLDataConfig())
+features = build_features_from_pipeline(
+    pipeline, home_team="KC", away_team="BAL", season=2024, week=10,
+)
+
+# Predict
+prediction = predictor.predict(features)
+print(f"KC win prob: {prediction.home_win_prob:.1%}")
+print(f"Spread: {prediction.proj_spread:+.1f}")
+print(f"Total:  {prediction.proj_total:.1f}")
+```
+
+### NFL Multi-Book Odds & Middling
+
+```python
+from sportsquant.core.betting.strategies.middling import detect_middles
+
+# parse_game_lines_to_raw() flattens Odds API responses
+df = pipeline.get_multi_book_odds(api_key="...")  # h2h + spreads + totals
+middles = detect_middles(df)
+print(middles)  # spread + total middling opportunities
+```
+
+### Command-Line Interface
+
+```bash
+# NFL-specific commands
+sportsquant nfl ev           --player "Patrick Mahomes" --stat passing_yards ...
+sportsquant nfl kelly        --edge 0.05 --odds -110 --bankroll 1000
+sportsquant nfl backtest     --csv lines.csv --walk-forward
+sportsquant nfl ratings      --season 2024 --method massey
+sportsquant nfl props        --site prizepicks --min-ev 0.05
+sportsquant nfl predict-game --home KC --away BAL --season 2024 --week 10
+```
+
+### Web Dashboard
+
+```bash
+make web  # or: uvicorn sportsquant.web.app:app --port 8080
+```
+
+Five pages: Dashboard, EV Calculator, Backtest, Power Ratings, **NFL Game Predictor**.
+Built on FastAPI + Jinja2 + Tailwind CSS (dark theme).
 
 ## Package Structure
 

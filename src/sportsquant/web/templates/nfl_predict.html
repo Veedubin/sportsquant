@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">NFL Game Predictor</h1>
+<p class="text-gray-400 mb-6">
+    XGBoost ensemble predicting home win probability, projected spread,
+    and projected total. Defaults use a synthetic-data bootstrap model —
+    supply <code>--model-path</code> for production-trained weights.
+</p>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Input form -->
+    <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h2 class="text-lg font-semibold mb-4 text-green-400">Matchup</h2>
+        <form method="post" action="/nfl-predict/" class="space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Home team</label>
+                    <input name="home" value="KC" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 font-mono">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Away team</label>
+                    <input name="away" value="BAL" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 font-mono">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Season</label>
+                    <input name="season" type="number" value="2024" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Week</label>
+                    <input name="week" type="number" value="10" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 pt-4 border-t border-gray-700">
+                <div class="col-span-2 text-sm font-semibold text-blue-400">Home team</div>
+                <div><label class="block text-xs text-gray-400 mb-1">PPG for</label><input name="home_ppg_for" type="number" step="0.1" value="22.0" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+                <div><label class="block text-xs text-gray-400 mb-1">PPG against</label><input name="home_ppg_against" type="number" step="0.1" value="22.0" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+                <div><label class="block text-xs text-gray-400 mb-1">Yards/play</label><input name="home_yards_per_play" type="number" step="0.1" value="5.5" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+                <div><label class="block text-xs text-gray-400 mb-1">Turnover rate</label><input name="home_turnover_rate" type="number" step="0.1" value="1.4" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+                <div class="col-span-2"><label class="block text-xs text-gray-400 mb-1">QB rating</label><input name="home_qb_rating" type="number" step="0.1" value="85.0" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 pt-4 border-t border-gray-700">
+                <div class="col-span-2 text-sm font-semibold text-yellow-400">Away team</div>
+                <div><label class="block text-xs text-gray-400 mb-1">PPG for</label><input name="away_ppg_for" type="number" step="0.1" value="22.0" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+                <div><label class="block text-xs text-gray-400 mb-1">PPG against</label><input name="away_ppg_against" type="number" step="0.1" value="22.0" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+                <div><label class="block text-xs text-gray-400 mb-1">Yards/play</label><input name="away_yards_per_play" type="number" step="0.1" value="5.5" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+                <div><label class="block text-xs text-gray-400 mb-1">Turnover rate</label><input name="away_turnover_rate" type="number" step="0.1" value="1.4" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+                <div class="col-span-2"><label class="block text-xs text-gray-400 mb-1">QB rating</label><input name="away_qb_rating" type="number" step="0.1" value="85.0" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2"></div>
+            </div>
+
+            <div class="pt-4 border-t border-gray-700">
+                <label class="block text-xs text-gray-400 mb-1">Rest days advantage (home − away)</label>
+                <input name="rest_advantage" type="number" step="0.1" value="0.0" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2">
+            </div>
+
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Model path (optional, leave blank for default)</label>
+                <input name="model_path" type="text" placeholder="e.g. notebooks/football/cache/nfl_game_model" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 font-mono text-sm">
+            </div>
+
+            <button type="submit" class="w-full bg-green-600 hover:bg-green-500 text-white font-semibold py-3 rounded transition">
+                Predict Outcome
+            </button>
+        </form>
+    </div>
+
+    <!-- Results -->
+    <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h2 class="text-lg font-semibold mb-4 text-green-400">Prediction</h2>
+        {% if result and result.success %}
+            <div class="mb-4 text-sm text-gray-400">
+                <span class="font-mono text-gray-200">{{ result.away }}</span> @
+                <span class="font-mono text-gray-200">{{ result.home }}</span> —
+                W{{ result.week }} {{ result.season }}
+            </div>
+            <div class="space-y-3">
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-400">{{ result.home }} win probability</div>
+                    <div class="text-3xl font-bold text-green-400">{{ "%.1f"|format(result.home_win_prob * 100) }}%</div>
+                </div>
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-400">{{ result.away }} win probability</div>
+                    <div class="text-3xl font-bold text-yellow-400">{{ "%.1f"|format(result.away_win_prob * 100) }}%</div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-gray-900 rounded p-3">
+                        <div class="text-xs text-gray-400">Proj. spread</div>
+                        <div class="text-2xl font-bold text-blue-400">{{ "%+.1f"|format(result.proj_spread) }}</div>
+                    </div>
+                    <div class="bg-gray-900 rounded p-3">
+                        <div class="text-xs text-gray-400">Proj. total</div>
+                        <div class="text-2xl font-bold text-purple-400">{{ "%.1f"|format(result.proj_total) }}</div>
+                    </div>
+                </div>
+                <div class="text-xs text-gray-500 pt-2 border-t border-gray-700">
+                    Model: {{ result.model_source }}
+                </div>
+            </div>
+
+            {% if feature_importances %}
+            <div class="mt-6">
+                <h3 class="text-sm font-semibold text-gray-300 mb-2">Top feature importances</h3>
+                <div class="space-y-1">
+                    {% for feat, imp in feature_importances[:8] %}
+                    <div class="flex items-center text-xs">
+                        <div class="w-32 font-mono text-gray-400">{{ feat }}</div>
+                        <div class="flex-1 bg-gray-900 rounded h-4 overflow-hidden">
+                            <div class="bg-green-500 h-full" style="width: {{ (imp * 100)|round(1) }}%"></div>
+                        </div>
+                        <div class="w-12 text-right font-mono text-gray-300">{{ "%.3f"|format(imp) }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        {% elif result and not result.success %}
+            <div class="bg-red-900 border border-red-700 rounded p-4 text-red-200">
+                <div class="font-semibold mb-1">Prediction failed</div>
+                <div class="text-sm font-mono">{{ result.error }}</div>
+            </div>
+        {% else %}
+            <div class="text-gray-500 text-center py-12">
+                Fill out the form and click <span class="text-green-400">Predict Outcome</span> to see results.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="mt-6 bg-gray-800 rounded-lg p-6 border border-gray-700 text-sm text-gray-400">
+    <h3 class="text-base font-semibold text-gray-200 mb-2">How this works</h3>
+    <ul class="list-disc list-inside space-y-1">
+        <li><strong>14 features</strong>: home/away points/game scored and allowed, yards per play, turnover rate, QB rating, PPG differential, defense differential, home-field advantage, rest days.</li>
+        <li><strong>3 XGBoost models</strong>: classifier (win probability), regressor (spread), regressor (total).</li>
+        <li><strong>Default model</strong>: trained on 400 synthetic games so the dashboard works offline. Replace with a production-trained model via <code>model_path</code> (output of <code>NFLGamePredictor.save()</code>).</li>
+        <li><strong>CLI equivalent</strong>: <code class="text-green-400 font-mono">sportsquant nfl predict-game --home KC --away BAL --season 2024 --week 10</code></li>
+    </ul>
+</div>
+{% endblock %}

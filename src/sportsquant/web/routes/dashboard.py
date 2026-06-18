@@ -21,12 +21,20 @@ async def dashboard(request: Request) -> HTMLResponse:
     """Render the main dashboard with overview cards."""
     stats = {
         "total_tools": 37,
-        "cli_commands": 19,
-        "notebooks": 8,
-        "tests_passing": 692,
+        "cli_commands": 20,
+        "notebooks": 9,
+        "tests_passing": 762,
         "sports_supported": ["NBA", "NFL", "MLB", "NHL", "PGA"],
+        "nfl_modules": [
+            "NFLDataPipeline (nflfastR + ESPN + Pinnacle)",
+            "NFL Game Predictor (XGBoost ensemble)",
+            "Multi-book Odds Aggregator (Odds API)",
+            "Spread & Total Middling Detection",
+            "NFL Advanced Metrics (EPA/DVOA/QBR)",
+        ],
     }
     return _templates.TemplateResponse(
+        request,
         "dashboard.html",
-        {"request": request, "stats": stats, "page_title": "Dashboard"},
+        {"stats": stats, "page_title": "Dashboard"},
     )

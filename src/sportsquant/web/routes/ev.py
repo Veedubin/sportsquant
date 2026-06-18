@@ -19,8 +19,9 @@ _templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 async def ev_form(request: Request) -> HTMLResponse:
     """Render the EV calculator form with no results."""
     return _templates.TemplateResponse(
+        request,
         "ev.html",
-        {"request": request, "result": None, "page_title": "EV Calculator"},
+        {"result": None, "page_title": "EV Calculator"},
     )
 
 
@@ -72,6 +73,7 @@ async def ev_calculate(
         result = {"error": str(e)}
 
     return _templates.TemplateResponse(
+        request,
         "ev.html",
-        {"request": request, "result": result, "page_title": "EV Calculator"},
+        {"result": result, "page_title": "EV Calculator"},
     )
