@@ -42,8 +42,21 @@ jobs:
       - name: Test
         run: uv run pytest tests/ -q --tb=short
 
-      - name: Build package
-        run: uv build
+      - name: Verify __version__ matches pyproject.toml
+        run: |
+          PKG_VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          MOD_VERSION=$(uv run python -c "import quantitative_sports; print(quantitative_sports.__version__)")
+          if [ "$PKG_VERSION" != "$MOD_VERSION" ]; then
+            echo "::error::pyproject.toml version $PKG_VERSION does not match __init__.py __version__ $MOD_VERSION"
+            exit 1
+          fi
+          echo "Both versions match: $PKG_VERSION"
+
+      - name: Build sdist (before venv exists)
+        run: uv build --sdist
+
+      - name: Build wheel
+        run: uv build --wheel
 
       - name: Extract tag name
         id: extract_tag
