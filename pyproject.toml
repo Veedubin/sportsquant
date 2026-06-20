@@ -8,6 +8,35 @@ version = "0.2.0"
 description = "QuantLib for sports betting — open-source quantitative analysis toolkit"
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [
+    {name = "VeeDubin", email = "veedubin@neuralgentics.dev"}
+]
+license = {text = "MIT"}
+keywords = [
+    "sports-betting",
+    "quantitative-finance",
+    "expected-value",
+    "kelly-criterion",
+    "middling",
+    "nfl",
+    "odds-api",
+    "timescaledb",
+    "backtesting",
+    "xgboost",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Database",
+]
 dependencies = [
     "asyncpg>=0.29.0",
     "click>=8.0.0",
@@ -79,6 +108,12 @@ dev = [
     "seaborn>=0.13.0",
     "testcontainers>=4.7.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Veedubin/quantitative-sports"
+Repository = "https://github.com/Veedubin/quantitative-sports"
+Issues = "https://github.com/Veedubin/quantitative-sports/issues"
+Changelog = "https://github.com/Veedubin/quantitative-sports/releases"
 
 [project.scripts]
 quantitative_sports = "quantitative_sports.cli.main:app"
