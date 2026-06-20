@@ -4,7 +4,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from sportsquant.models.ratings.raptor_composite import RaptorCompositeFeatures
+from quantitative_sports.models.ratings.raptor_composite import RaptorCompositeFeatures
 
 
 class TestRaptorCompositeCalculation:

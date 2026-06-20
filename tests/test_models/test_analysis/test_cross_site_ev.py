@@ -5,13 +5,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pandas as pd
 
-from sportsquant.models.analysis.cross_site_ev import CrossSiteEVEngine
+from quantitative_sports.models.analysis.cross_site_ev import CrossSiteEVEngine
 
 
 class TestMapAlternateToStandard:
     """Tests for map_alternate_to_standard method."""
 
-    @patch("sportsquant.models.analysis.cross_site_ev.CrossSiteEVEngine._get_dk_storage")
+    @patch("quantitative_sports.models.analysis.cross_site_ev.CrossSiteEVEngine._get_dk_storage")
     def test_maps_fd_alt_to_dk_standard(
         self,
         mock_get_dk: MagicMock,
@@ -113,8 +113,8 @@ class TestCalculateCrossSiteEV:
 class TestFindOpportunities:
     """Tests for find_opportunities method."""
 
-    @patch("sportsquant.models.analysis.cross_site_ev.CrossSiteEVEngine._get_dk_storage")
-    @patch("sportsquant.models.analysis.cross_site_ev.CrossSiteEVEngine._get_fd_storage")
+    @patch("quantitative_sports.models.analysis.cross_site_ev.CrossSiteEVEngine._get_dk_storage")
+    @patch("quantitative_sports.models.analysis.cross_site_ev.CrossSiteEVEngine._get_fd_storage")
     def test_filters_by_min_ev(
         self,
         mock_get_fd: MagicMock,

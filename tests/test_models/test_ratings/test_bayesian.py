@@ -2,7 +2,7 @@
 
 import pytest
 
-from sportsquant.models.ratings.bayesian_priors import (
+from quantitative_sports.models.ratings.bayesian_priors import (
     BayesianPriorCalculator,
     PriorConfig,
     compute_posterior,

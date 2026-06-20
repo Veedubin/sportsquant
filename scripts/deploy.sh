@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── SportsQuant K8s Deployment ──────────────────────────────────────────────
+# ── Quant-Sports K8s Deployment ──────────────────────────────────────────────
 # Applies manifests in dependency order: storage → data plane → app → observability
 # Usage: ./scripts/deploy.sh [--dry-run]
 
@@ -13,7 +13,7 @@ fi
 
 KUBECTL="kubectl apply $DRY_RUN"
 
-echo "=== SportsQuant K8s Deployment ==="
+echo "=== Quant-Sports K8s Deployment ==="
 echo ""
 
 # ── Phase 1: Storage & Stateful Infrastructure ──────────────────────────────

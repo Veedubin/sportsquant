@@ -2,7 +2,7 @@
 
 import pytest
 
-from sportsquant.core.betting.odds import Odds
+from quantitative_sports.core.betting.odds import Odds
 
 
 class TestOdds:

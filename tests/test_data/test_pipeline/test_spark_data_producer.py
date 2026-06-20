@@ -3,11 +3,11 @@
 
 from unittest.mock import MagicMock, patch
 
-from sportsquant.data.pipeline.spark_data_producer import (
+from quantitative_sports.data.pipeline.spark_data_producer import (
     SparkDataProducer,
     start_metrics_server,
 )
-from sportsquant.data.pipeline.producer_config import NBA_TOPIC_MAPPINGS, ProducerSettings
+from quantitative_sports.data.pipeline.producer_config import NBA_TOPIC_MAPPINGS, ProducerSettings
 
 
 class TestSparkDataProducer:
@@ -32,7 +32,7 @@ class TestSparkDataProducer:
         producer = SparkDataProducer()
         mapping = NBA_TOPIC_MAPPINGS[0]
         with patch(
-            "sportsquant.data.pipeline.spark_data_producer.get_transform_function"
+            "quantitative_sports.data.pipeline.spark_data_producer.get_transform_function"
         ) as mock_transform:
             mock_transform.return_value = lambda x: {
                 "player_stats": [{"id": 1}],
@@ -54,7 +54,7 @@ class TestSparkDataProducer:
         producer = SparkDataProducer()
         mapping = NBA_TOPIC_MAPPINGS[0]
         with patch(
-            "sportsquant.data.pipeline.spark_data_producer.get_transform_function"
+            "quantitative_sports.data.pipeline.spark_data_producer.get_transform_function"
         ) as mock_transform:
             mock_transform.return_value = None
             result = producer._process_message('{"key": "value"}', mapping)
@@ -65,7 +65,7 @@ class TestSparkDataProducer:
         producer = SparkDataProducer()
         mapping = NBA_TOPIC_MAPPINGS[0]
         with patch(
-            "sportsquant.data.pipeline.spark_data_producer.get_transform_function"
+            "quantitative_sports.data.pipeline.spark_data_producer.get_transform_function"
         ) as mock_transform:
             mock_transform.return_value = lambda x: {"record_count": 0}
             result = producer._process_message('{"key": "value"}', mapping)
@@ -74,7 +74,7 @@ class TestSparkDataProducer:
     def test_publish_records_empty(self):
         """Test publishing empty records returns 0."""
         producer = SparkDataProducer()
-        with patch("sportsquant.data.pipeline.spark_data_producer.create_kafka_producer"):
+        with patch("quantitative_sports.data.pipeline.spark_data_producer.create_kafka_producer"):
             mock_producer = MagicMock()
             result = producer._publish_records(mock_producer, [], "test-topic")
             assert result == 0
@@ -82,7 +82,7 @@ class TestSparkDataProducer:
     def test_publish_records_success(self):
         """Test publishing records successfully."""
         producer = SparkDataProducer()
-        with patch("sportsquant.data.pipeline.spark_data_producer.create_kafka_producer"):
+        with patch("quantitative_sports.data.pipeline.spark_data_producer.create_kafka_producer"):
             mock_producer = MagicMock()
             mock_producer.send.return_value.get.return_value = MagicMock()
 
@@ -94,7 +94,7 @@ class TestSparkDataProducer:
     def test_publish_records_counts_all(self):
         """Test publishing records counts all (including errors)."""
         producer = SparkDataProducer()
-        with patch("sportsquant.data.pipeline.spark_data_producer.create_kafka_producer"):
+        with patch("quantitative_sports.data.pipeline.spark_data_producer.create_kafka_producer"):
             mock_producer = MagicMock()
             mock_producer.send.return_value.get.side_effect = [
                 MagicMock(),
@@ -122,14 +122,14 @@ class TestMain:
 
     def test_main_entry_point(self):
         """Test main function exists and is callable."""
-        from sportsquant.data.pipeline import spark_data_producer
+        from quantitative_sports.data.pipeline import spark_data_producer
 
         assert hasattr(spark_data_producer, "main")
         assert callable(spark_data_producer.main)
 
     def test_metrics_server_exists(self):
         """Test metrics server function exists."""
-        from sportsquant.data.pipeline import spark_data_producer
+        from quantitative_sports.data.pipeline import spark_data_producer
 
         assert hasattr(spark_data_producer, "start_metrics_server")
         assert callable(spark_data_producer.start_metrics_server)

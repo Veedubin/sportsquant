@@ -4,7 +4,7 @@
 import pytest
 from pytest import approx
 
-from sportsquant.core.betting.kelly import (
+from quantitative_sports.core.betting.kelly import (
     KellyCalculator,
     KellyCalculatorConfig,
     AdaptiveKellyContext,

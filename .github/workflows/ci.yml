@@ -89,11 +89,11 @@ jobs:
           key: uv-${{ matrix.target }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
 
       - name: Build image
-        run: docker build -f docker/Dockerfile.${{ matrix.target }} -t sportsquant/${{ matrix.target }}:ci .
+        run: docker build -f docker/Dockerfile.${{ matrix.target }} -t quantitative_sports/${{ matrix.target }}:ci .
 
       - name: Image size
         run: |
-          SIZE=$(docker image inspect sportsquant/${{ matrix.target }}:ci --format='{{.Size}}')
+          SIZE=$(docker image inspect quantitative_sports/${{ matrix.target }}:ci --format='{{.Size}}')
           echo "Image size: $SIZE"
           # poller target ~1.3 GB, web target ~1.1 GB
           SIZE_MB=$((SIZE / 1024 / 1024))

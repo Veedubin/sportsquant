@@ -2,7 +2,7 @@
 
 import pytest
 
-from sportsquant.core.betting.engine import (
+from quantitative_sports.core.betting.engine import (
     BetDecision,
     BetResult,
     calculate_ev,

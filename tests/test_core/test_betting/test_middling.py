@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from sportsquant.core.betting.strategies.middling import (
+from quantitative_sports.core.betting.strategies.middling import (
     detect_middles,
     detect_spread_middles,
     detect_total_middles,

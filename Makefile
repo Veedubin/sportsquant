@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────
-# SportsQuant v0.2.0 Makefile
+# Quant-Sports v0.2.0 Makefile
 # ─────────────────────────────────────────────────────────────────────
 
 .PHONY: help install install-dev install-notebook test lint format clean \
@@ -43,10 +43,10 @@ docker-build-base:  ## Build the timescaledb base image (pulled from registry, n
 	@echo "timescaledb uses the upstream image docker.io/timescale/timescaledb:latest-pg18 — no build needed"
 
 docker-build-poller:  ## Build the poller container image
-	$(DOCKER) build -f docker/Dockerfile.poller -t sportsquant/poller:latest .
+	$(DOCKER) build -f docker/Dockerfile.poller -t quant-sports/poller:latest .
 
 docker-build-web:  ## Build the web UI container image
-	$(DOCKER) build -f docker/Dockerfile.web -t sportsquant/web:latest .
+	$(DOCKER) build -f docker/Dockerfile.web -t quant-sports/web:latest .
 
 docker-build-all: docker-build-poller docker-build-web  ## Build both poller and web images
 	@echo "All images built. Timescaledb is pulled from registry on first run."
@@ -73,10 +73,10 @@ docker-logs:  ## Tail logs from all containers
 # ── Docker: poller shortcuts ────────────────────────────────────────
 
 poller-once:  ## Run a single poller cycle (for testing)
-	$(DOCKER) compose run --rm poller uv run sportsquant-poller once
+	$(DOCKER) compose run --rm poller uv run quant-sports-poller once
 
 poller-status:  ## Show poller health and run history
-	$(DOCKER) compose run --rm poller uv run sportsquant-poller status
+	$(DOCKER) compose run --rm poller uv run quant-sports-poller status
 
 poller-logs:  ## Tail the poller container logs
 	$(DOCKER) compose logs -f poller

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quant-Sports — {{ page_title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <nav class="bg-gray-800 border-b border-gray-700 px-6 py-3">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <a href="/" class="text-xl font-bold text-green-400 hover:text-green-300 transition">Quant-Sports</a>
+            <div class="flex gap-6 text-sm">
+                <a href="/" class="hover:text-green-400 transition {% if request.url.path == '/' %}text-green-400{% else %}text-gray-300{% endif %}">Home</a>
+                <a href="/metrics" class="hover:text-green-400 transition {% if request.url.path == '/metrics' %}text-green-400{% else %}text-gray-300{% endif %}">Metrics</a>
+                <a href="/labs" class="hover:text-green-400 transition {% if '/labs' in request.url.path %}text-green-400{% else %}text-gray-300{% endif %}">Labs</a>
+                <a href="/docs" class="hover:text-green-400 transition {% if request.url.path == '/docs' %}text-green-400{% else %}text-gray-300{% endif %}">Docs</a>
+                <a href="/settings" class="hover:text-green-400 transition {% if request.url.path == '/settings' %}text-green-400{% else %}text-gray-300{% endif %}">Settings</a>
+            </div>
+        </div>
+    </nav>
+    <main class="max-w-6xl mx-auto px-6 py-8">
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="border-t border-gray-800 mt-12 py-4 text-center text-sm text-gray-500">
+        Quant-Sports v0.2.0 — Open-source quantitative sports analysis
+    </footer>
+</body>
+</html>

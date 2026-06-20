@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.6
 # ─────────────────────────────────────────────────────────────────────
-# SportsQuant Dockerfile (multi-target)
+# Quant-Sports Dockerfile (multi-target)
 #
 # Build targets:
-#   docker build --target web -t sportsquant/web .      # Web UI (default)
-#   docker build --target api -t sportsquant/api .      # FastAPI service
-#   docker build --target poller -t sportsquant/poller .# Background poller
-#   docker build --target dev -t sportsquant/dev .       # Full dev image
+#   docker build --target web -t quant-sports/web .      # Web UI (default)
+#   docker build --target api -t quantitative_sports/api .      # FastAPI service
+#   docker build --target poller -t quant-sports/poller .# Background poller
+#   docker build --target dev -t quantitative_sports/dev .       # Full dev image
 #
 # Base image uses uv for fast, reproducible installs.
 # ─────────────────────────────────────────────────────────────────────
@@ -63,30 +63,30 @@ WORKDIR /app
 EXPOSE 8080
 
 # Default command: serve the web UI on :8080. Override with
-# `docker run sportsquant/web uv run sportsquant-api` to use the API.
-CMD ["uv", "run", "uvicorn", "sportsquant.web.app:app", \
+# `docker run quant-sports/web uv run quantitative_sports-api` to use the API.
+CMD ["uv", "run", "uvicorn", "quantitative_sports.web.app:app", \
      "--host", "0.0.0.0", "--port", "8080"]
 
 # ─────────────────────────────────────────────────────────────────────
 # API target
-# Runs the FastAPI service (sportsquant-api) for production use.
+# Runs the FastAPI service (quantitative_sports-api) for production use.
 # ─────────────────────────────────────────────────────────────────────
 FROM web AS api
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "sportsquant.api.betting_api:app", \
+CMD ["uv", "run", "uvicorn", "quantitative_sports.api.betting_api:app", \
      "--host", "0.0.0.0", "--port", "8000"]
 
 # ─────────────────────────────────────────────────────────────────────
 # Poller target
-# Background odds/stats poller (sportsquant-poller).
+# Background odds/stats poller (quant-sports-poller).
 # Note: the underlying poller module is a stub; this target is here
 # so the compose file is consistent.
 # ─────────────────────────────────────────────────────────────────────
 FROM web AS poller
 
-CMD ["uv", "run", "sportsquant-poller"]
+CMD ["uv", "run", "quant-sports-poller"]
 
 # ─────────────────────────────────────────────────────────────────────
 # Dev target
@@ -105,5 +105,5 @@ WORKDIR /app
 
 EXPOSE 8080 8000
 
-CMD ["uv", "run", "uvicorn", "sportsquant.web.app:app", \
+CMD ["uv", "run", "uvicorn", "quantitative_sports.web.app:app", \
      "--host", "0.0.0.0", "--port", "8080", "--reload"]

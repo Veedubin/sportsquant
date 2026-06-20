@@ -6,7 +6,7 @@ live TimescaleDB instance (or synthetic data if the DB is empty).
 
 Usage::
 
-    cd /home/jcharles/Projects/Infrastructure/sportsquant
+    cd /home/jcharles/Projects/Infrastructure/quantitative_sports
     uv run python labs/build_lab_03.py
 """
 
@@ -86,7 +86,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "## Section 1: Setup — Imports and DB Connection\n"
             "\n"
-            "We'll use the sportsquant betting module for odds conversion, Kelly calculations, "
+            "We'll use the quantitative_sports betting module for odds conversion, Kelly calculations, "
             "and edge detection. We also connect to TimescaleDB to pull live odds data."
         )
     )
@@ -101,8 +101,8 @@ def build() -> nbf.NotebookNode:
             "\n"
             "import pandas as pd\n"
             "\n"
-            "from sportsquant.core.betting.odds import Odds\n"
-            "from sportsquant.core.betting.kelly import (\n"
+            "from quantitative_sports.core.betting.odds import Odds\n"
+            "from quantitative_sports.core.betting.kelly import (\n"
             "    KellyCalculator,\n"
             "    KellyCalculatorConfig,\n"
             "    EdgeCalculator,\n"
@@ -110,15 +110,15 @@ def build() -> nbf.NotebookNode:
             "    BankrollManager,\n"
             "    BankrollManagerConfig,\n"
             ")\n"
-            "from sportsquant.core.betting.engine import (\n"
+            "from quantitative_sports.core.betting.engine import (\n"
             "    american_to_decimal,\n"
             "    calculate_ev,\n"
             "    detect_arbitrage,\n"
             "    expected_value,\n"
             "    kelly_fraction,\n"
             ")\n"
-            "from sportsquant.util.time_utils import american_to_implied_prob, safe_float\n"
-            "from sportsquant.infra.db.connection import DBConfig, DatabasePool, get_pool, reset_pool\n"
+            "from quantitative_sports.util.time_utils import american_to_implied_prob, safe_float\n"
+            "from quantitative_sports.infra.db.connection import DBConfig, DatabasePool, get_pool, reset_pool\n"
             "\n"
             "import nest_asyncio\n"
             "nest_asyncio.apply()\n"
@@ -230,7 +230,7 @@ def build() -> nbf.NotebookNode:
         nbf.v4.new_code_cell(
             "# Cell 9: Convert American odds to decimal and implied probability\n"
             "#\n"
-            "# We use sportsquant's Odds class for the conversion.\n"
+            "# We use quantitative_sports's Odds class for the conversion.\n"
             "\n"
             "# Let's pick a few example odds and convert them\n"
             "example_odds = [-150, +130, -110, +105, -200, +175]\n"
@@ -329,7 +329,7 @@ def build() -> nbf.NotebookNode:
             "This ensures the probabilities sum to exactly 1.0. More sophisticated methods "
             "(Shin's method, power method) exist but the naive method is a good starting point.\n"
             "\n"
-            "The `EdgeCalculator` in `sportsquant.core.betting.kelly` provides edge and EV "
+            "The `EdgeCalculator` in `quantitative_sports.core.betting.kelly` provides edge and EV "
             "calculations, but for true probability estimation we'll implement the naive method here."
         )
     )
@@ -405,7 +405,7 @@ def build() -> nbf.NotebookNode:
             "- **EV < 0**: The book has an edge (negative expected profit)\n"
             "- **EV = 0**: Break-even bet\n"
             "\n"
-            "We use `sportsquant.core.betting.engine.expected_value()` and "
+            "We use `quantitative_sports.core.betting.engine.expected_value()` and "
             "`EdgeCalculator.compute_expected_value()` to compute EV."
         )
     )
@@ -477,7 +477,7 @@ def build() -> nbf.NotebookNode:
             "- **kelly ≤ 0**: No edge → don't bet\n"
             "\n"
             "**Fractional Kelly** (e.g., ¼ Kelly) is commonly used to reduce variance. "
-            "We'll use `KellyCalculator` from `sportsquant.core.betting.kelly`."
+            "We'll use `KellyCalculator` from `quantitative_sports.core.betting.kelly`."
         )
     )
 
@@ -486,7 +486,7 @@ def build() -> nbf.NotebookNode:
         nbf.v4.new_code_cell(
             "# Cell 17: Calculate Kelly fractions for +EV bets\n"
             "#\n"
-            "# We use KellyCalculator from sportsquant.core.betting.kelly.\n"
+            "# We use KellyCalculator from quantitative_sports.core.betting.kelly.\n"
             "\n"
             "kelly_calc = KellyCalculator()\n"
             "\n"
@@ -539,7 +539,7 @@ def build() -> nbf.NotebookNode:
             "bet_size = bankroll × kelly_fraction\n"
             "```\n"
             "\n"
-            "The `BankrollManager` in `sportsquant.core.betting.kelly` also applies "
+            "The `BankrollManager` in `quantitative_sports.core.betting.kelly` also applies "
             "position limits and exposure constraints."
         )
     )
@@ -816,7 +816,7 @@ def build() -> nbf.NotebookNode:
             "probability do you need to have a +EV bet?\n"
             "\n"
             "4. **Arbitrage detection** — Use `detect_arbitrage()` from "
-            "`sportsquant.core.betting.engine` to check if any of the event+book "
+            "`quantitative_sports.core.betting.engine` to check if any of the event+book "
             "combinations offer an arbitrage opportunity. What does an arbitrage "
             "opportunity look like in terms of implied probabilities?\n"
             "\n"
@@ -848,15 +848,15 @@ def build() -> nbf.NotebookNode:
             "\n"
             "| Class/Function | Module | Purpose |\n"
             "|---|---|---|\n"
-            "| `Odds` | `sportsquant.core.betting.odds` | Convert American/decimal odds |\n"
-            "| `KellyCalculator` | `sportsquant.core.betting.kelly` | Full, fractional, adaptive Kelly |\n"
-            "| `EdgeCalculator` | `sportsquant.core.betting.kelly` | Compute edge and EV |\n"
-            "| `BankrollManager` | `sportsquant.core.betting.kelly` | Position-limited bet sizing |\n"
-            "| `expected_value()` | `sportsquant.core.betting.engine` | EV calculation |\n"
-            "| `kelly_fraction()` | `sportsquant.core.betting.engine` | Quick Kelly fraction |\n"
-            "| `american_to_decimal()` | `sportsquant.core.betting.engine` | Odds conversion |\n"
-            "| `detect_arbitrage()` | `sportsquant.core.betting.engine` | Find arb opportunities |\n"
-            "| `american_to_implied_prob()` | `sportsquant.util.time_utils` | Odds → probability |\n"
+            "| `Odds` | `quantitative_sports.core.betting.odds` | Convert American/decimal odds |\n"
+            "| `KellyCalculator` | `quantitative_sports.core.betting.kelly` | Full, fractional, adaptive Kelly |\n"
+            "| `EdgeCalculator` | `quantitative_sports.core.betting.kelly` | Compute edge and EV |\n"
+            "| `BankrollManager` | `quantitative_sports.core.betting.kelly` | Position-limited bet sizing |\n"
+            "| `expected_value()` | `quantitative_sports.core.betting.engine` | EV calculation |\n"
+            "| `kelly_fraction()` | `quantitative_sports.core.betting.engine` | Quick Kelly fraction |\n"
+            "| `american_to_decimal()` | `quantitative_sports.core.betting.engine` | Odds conversion |\n"
+            "| `detect_arbitrage()` | `quantitative_sports.core.betting.engine` | Find arb opportunities |\n"
+            "| `american_to_implied_prob()` | `quantitative_sports.util.time_utils` | Odds → probability |\n"
             "\n"
             "### Next Steps\n"
             "\n"

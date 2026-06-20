@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from sportsquant.data.sources.odds_api.game_lines import (
+from quantitative_sports.data.sources.odds_api.game_lines import (
     _COLUMNS,
     parse_game_lines_to_raw,
     parse_outrights_to_futures,

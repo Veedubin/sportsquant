@@ -4,12 +4,12 @@ from datetime import date
 
 import pytest
 
-from sportsquant.models.analysis.backtest import (
+from quantitative_sports.models.analysis.backtest import (
     BacktestEngine,
 )
-from sportsquant.models.analysis.backtest_result import BacktestResult
-from sportsquant.models.analysis.parameter_sweep import ParameterSweep, summarize_sweep_results
-from sportsquant.models.analysis.strategies import Strategy, StrategyLibrary
+from quantitative_sports.models.analysis.backtest_result import BacktestResult
+from quantitative_sports.models.analysis.parameter_sweep import ParameterSweep, summarize_sweep_results
+from quantitative_sports.models.analysis.strategies import Strategy, StrategyLibrary
 
 
 # =============================================================================

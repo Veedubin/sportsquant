@@ -1,6 +1,6 @@
 # Documentation Index
 
-Welcome to the SportsQuant technical documentation. This directory contains the comprehensive specifications, design decisions, and operational guides for the toolkit.
+Welcome to the Quant-Sports technical documentation. This directory contains the comprehensive specifications, design decisions, and operational guides for the toolkit.
 
 ## 🏛️ Architecture & Design
 Detailed records of the "why" behind our technical choices.
@@ -15,7 +15,7 @@ Definitions of our internal data structures and external integrations.
 - [Schema Documentation](./schemas/) - Pydantic model definitions, database ER diagrams, and cross-reference mappings for sports data sources.
 
 ## 🔌 API Reference
-The SportsQuant API is built using FastAPI.
+The Quant-Sports API is built using FastAPI.
 - [Interactive API Docs](http://localhost:8000/docs) - (When running locally) Access the Swagger UI for real-time endpoint testing and schema validation.
 
 ---

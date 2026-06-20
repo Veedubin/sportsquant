@@ -2,7 +2,7 @@
 
 import pytest
 
-from sportsquant.models.analysis.ev_calculator import (
+from quantitative_sports.models.analysis.ev_calculator import (
     EVCalculator,
     calculate_kelly_stake,
     calculate_breakeven_probability,

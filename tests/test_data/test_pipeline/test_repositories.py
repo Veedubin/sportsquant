@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 
-from sportsquant.data.pipeline.sqlite_repositories import (
+from quantitative_sports.data.pipeline.sqlite_repositories import (
     SQLiteMarketRepository,
     SQLitePlayerRepository,
     SQLiteProjectionRepository,

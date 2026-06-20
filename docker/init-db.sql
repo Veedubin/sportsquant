@@ -1,8 +1,8 @@
 -- ============================================================================
--- sportsquant — TimescaleDB Init Script
+-- quantitative_sports — TimescaleDB Init Script
 -- ============================================================================
 -- Target image:  timescale/timescaledb:latest-pg18
--- Purpose:      Bootstrap the sportsquant persistent storage layer for
+-- Purpose:      Bootstrap the quantitative_sports persistent storage layer for
 --               odds ticks, injuries, games, game results, poller health,
 --               and aggregated metrics.
 -- Date:         2026-06-18

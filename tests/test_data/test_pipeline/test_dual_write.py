@@ -1,6 +1,6 @@
 """Tests for dual write manager (migrated from sports-bet).
 
-Note: sportsquant.data.pipeline.dual_write is not yet implemented.
+Note: quantitative_sports.data.pipeline.dual_write is not yet implemented.
 Using inline implementations for testing.
 """
 

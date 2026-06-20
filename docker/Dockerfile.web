@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.6
 # ─────────────────────────────────────────────────────────────────────
-# SportsQuant Web UI Image (Ops Dashboard)
+# Quant-Sports Web UI Image (Ops Dashboard)
 # Target size: ~200 MB
-# Installs: sportsquant[web] (fastapi, jinja2, asyncpg, nbconvert, markdown)
+# Installs: quantitative_sports[web] (fastapi, jinja2, asyncpg, nbconvert, markdown)
 # Does NOT install: scipy, xgboost, sklearn, prefect
-# Runs: uvicorn sportsquant.web.app:app on :8080
+# Runs: uvicorn quantitative_sports.web.app:app on :8080
 # ─────────────────────────────────────────────────────────────────────
 
 FROM docker.io/library/python:3.12-slim
@@ -51,5 +51,5 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10s \
     CMD curl -fsS http://localhost:8080/ || exit 1
 
 # Run the web UI in the foreground
-CMD ["uv", "run", "uvicorn", "sportsquant.web.app:app", \
+CMD ["uv", "run", "uvicorn", "quantitative_sports.web.app:app", \
      "--host", "0.0.0.0", "--port", "8080"]

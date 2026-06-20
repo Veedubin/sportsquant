@@ -2,7 +2,7 @@
 
 import json
 
-from sportsquant.models.analysis.player_context import get_context_for_prop
+from quantitative_sports.models.analysis.player_context import get_context_for_prop
 
 
 def test_context():

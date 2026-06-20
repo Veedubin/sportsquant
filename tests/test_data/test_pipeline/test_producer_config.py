@@ -4,7 +4,7 @@
 import os
 from unittest.mock import patch
 
-from sportsquant.data.pipeline.producer_config import (
+from quantitative_sports.data.pipeline.producer_config import (
     TopicMapping,
     NBA_TOPIC_MAPPINGS,
     ProducerSettings,
@@ -205,7 +205,7 @@ class TestCreateKafkaProducer:
 
     def test_create_kafka_producer_default(self):
         """Test creating Kafka producer with default settings."""
-        with patch("sportsquant.data.pipeline.producer_config.KafkaProducer") as mock:
+        with patch("quantitative_sports.data.pipeline.producer_config.KafkaProducer") as mock:
             create_kafka_producer()
             mock.assert_called_once()
             call_kwargs = mock.call_args[1]
@@ -213,7 +213,7 @@ class TestCreateKafkaProducer:
 
     def test_create_kafka_producer_custom(self):
         """Test creating Kafka producer with custom settings."""
-        with patch("sportsquant.data.pipeline.producer_config.KafkaProducer") as mock:
+        with patch("quantitative_sports.data.pipeline.producer_config.KafkaProducer") as mock:
             settings = ProducerSettings(kafka_bootstrap_servers="custom:9092")
             create_kafka_producer(settings)
             mock.assert_called_once()

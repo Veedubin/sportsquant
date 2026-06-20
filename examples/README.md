@@ -18,7 +18,7 @@ These files will be removed in v0.3.0.
 
 # Examples & Tutorials
 
-This directory provides a curated set of Jupyter notebooks and scripts designed to demonstrate the practical application of the SportsQuant toolkit.
+This directory provides a curated set of Jupyter notebooks and scripts designed to demonstrate the practical application of the Quant-Sports toolkit.
 
 ## 📚 Available Examples
 
@@ -57,4 +57,4 @@ jupyter lab
 ```
 
 ## 🛠️ Contributing Examples
-If you have developed a novel strategy or a unique analytical approach using SportsQuant, feel free to contribute your notebook to this directory via a Pull Request.
+If you have developed a novel strategy or a unique analytical approach using Quant-Sports, feel free to contribute your notebook to this directory via a Pull Request.

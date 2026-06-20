@@ -1,4 +1,4 @@
-"""Smoke tests for the SportsQuant v0.2.0 ops dashboard web UI.
+"""Smoke tests for the Quant-Sports v0.2.0 ops dashboard web UI.
 
 Verifies:
 - App factory produces a working FastAPI instance
@@ -45,24 +45,24 @@ def client(mocked_pool: MagicMock) -> TestClient:
 
     Each route module does ``from ...infra.db.connection import get_pool``
     at module-import time, so patching the source module
-    (``sportsquant.infra.db.connection.get_pool``) does **not** affect
+    (``quantitative_sports.infra.db.connection.get_pool``) does **not** affect
     the already-imported local references.  We must patch each consumer
     module's own reference instead.
     """
-    from sportsquant.web.app import create_app
+    from quantitative_sports.web.app import create_app
 
     app = create_app()
 
     # Patch get_pool in every route module that imports it.
     # Settings, docs, and labs routes do NOT use the DB.
     patcher_home = patch(
-        "sportsquant.web.routes.home.get_pool", new=AsyncMock(return_value=mocked_pool)
+        "quantitative_sports.web.routes.home.get_pool", new=AsyncMock(return_value=mocked_pool)
     )
     patcher_metrics = patch(
-        "sportsquant.web.routes.metrics.get_pool", new=AsyncMock(return_value=mocked_pool)
+        "quantitative_sports.web.routes.metrics.get_pool", new=AsyncMock(return_value=mocked_pool)
     )
     patcher_poller = patch(
-        "sportsquant.web.routes.poller.get_pool", new=AsyncMock(return_value=mocked_pool)
+        "quantitative_sports.web.routes.poller.get_pool", new=AsyncMock(return_value=mocked_pool)
     )
 
     patcher_home.start()
@@ -81,11 +81,11 @@ def client(mocked_pool: MagicMock) -> TestClient:
 
 def test_app_factory_succeeds() -> None:
     """``create_app()`` returns a valid FastAPI app with v0.2.0 title."""
-    from sportsquant.web.app import create_app
+    from quantitative_sports.web.app import create_app
 
     app = create_app()
     assert app is not None
-    assert app.title == "SportsQuant Dashboard"
+    assert app.title == "Quant-Sports Dashboard"
     assert app.version == "0.2.0"
 
 
@@ -96,7 +96,7 @@ def test_home_returns_200(client: TestClient) -> None:
     """``GET /`` renders the poller overview page."""
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "SportsQuant Pollers" in resp.text
+    assert "Quant-Sports Pollers" in resp.text
 
 
 # ── Metrics ─────────────────────────────────────────────────────────

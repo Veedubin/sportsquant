@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sportsquant"
+name = "quantitative_sports"
 version = "0.2.0"
 description = "QuantLib for sports betting — open-source quantitative analysis toolkit"
 readme = "README.md"
@@ -81,12 +81,12 @@ dev = [
 ]
 
 [project.scripts]
-sportsquant = "sportsquant.cli.main:app"
-sportsquant-poller = "sportsquant.infra.poller.main:main"
-sportsquant-web = "sportsquant.web.app:create_app"
+quantitative_sports = "quantitative_sports.cli.main:app"
+quant-sports-poller = "quantitative_sports.infra.poller.main:main"
+quant-sports-web = "quantitative_sports.web.app:create_app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/sportsquant"]
+packages = ["src/quantitative_sports"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,6 +1,6 @@
 """Tests for authentication system (migrated from sports-bet).
 
-Note: sportsquant.api.auth module is not yet implemented.
+Note: quantitative_sports.api.auth module is not yet implemented.
 This test file is a template ready for when the auth module is added.
 """
 

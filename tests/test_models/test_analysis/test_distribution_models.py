@@ -2,7 +2,7 @@
 
 import pytest
 
-from sportsquant.models.analysis.distribution_models import (
+from quantitative_sports.models.analysis.distribution_models import (
     DistributionSelector,
     EmpiricalCDF,
     GammaDistribution,

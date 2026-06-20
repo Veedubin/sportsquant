@@ -1,4 +1,4 @@
-"""Pytest fixtures for sportsquant tests."""
+"""Pytest fixtures for quantitative_sports tests."""
 
 import sqlite3
 from pathlib import Path

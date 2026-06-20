@@ -5,7 +5,7 @@ produce the notebook, then open it in Jupyter to execute the cells.
 
 Usage::
 
-    cd /home/jcharles/Projects/Infrastructure/sportsquant
+    cd /home/jcharles/Projects/Infrastructure/quantitative_sports
     uv run python labs/build_lab_08.py
 """
 
@@ -65,7 +65,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "- **Labs 01-07 completed** — you understand the data pipeline, EV, middling, "
             "and rating systems\n"
-            "- **Poller running** — the SportsQuant poller should be actively collecting odds "
+            "- **Poller running** — the Quant-Sports poller should be actively collecting odds "
             "(or use synthetic data fallback)\n"
             "- **Betting fundamentals** — American odds, expected value, Kelly Criterion\n"
             "\n"
@@ -93,7 +93,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "## Section 1: Setup — Imports and Configuration\n"
             "\n"
-            "We import the core SportsQuant modules for database access, odds conversion, "
+            "We import the core Quant-Sports modules for database access, odds conversion, "
             "Kelly sizing, and the poller status check. If the database is not available, "
             "we fall back to synthetic data."
         )
@@ -113,8 +113,8 @@ def build() -> nbf.NotebookNode:
             'import pandas as pd\n'
             'import matplotlib.pyplot as plt\n'
             '\n'
-            'from sportsquant.core.betting.odds import Odds\n'
-            'from sportsquant.core.betting.kelly import (\n'
+            'from quantitative_sports.core.betting.odds import Odds\n'
+            'from quantitative_sports.core.betting.kelly import (\n'
             '    KellyCalculator,\n'
             '    KellyCalculatorConfig,\n'
             '    EdgeCalculator,\n'
@@ -122,15 +122,15 @@ def build() -> nbf.NotebookNode:
             '    BankrollManager,\n'
             '    BankrollManagerConfig,\n'
             ')\n'
-            'from sportsquant.core.betting.engine import (\n'
+            'from quantitative_sports.core.betting.engine import (\n'
             '    american_to_decimal,\n'
             '    calculate_ev,\n'
             '    expected_value,\n'
             '    kelly_fraction,\n'
             ')\n'
-            'from sportsquant.infra.db.connection import DBConfig, DatabasePool, get_pool, health_check, reset_pool\n'
-            'from sportsquant.infra.db.queries import get_poller_health_summary, get_table_stats\n'
-            'from sportsquant.util.time_utils import utc_now_iso\n'
+            'from quantitative_sports.infra.db.connection import DBConfig, DatabasePool, get_pool, health_check, reset_pool\n'
+            'from quantitative_sports.infra.db.queries import get_poller_health_summary, get_table_stats\n'
+            'from quantitative_sports.util.time_utils import utc_now_iso\n'
             '\n'
             '# Enable nested event loops in Jupyter\n'
             'import nest_asyncio\n'
@@ -841,8 +841,8 @@ def build() -> nbf.NotebookNode:
             '# After games finish, we incorporate results into our rating models.\n'
             '# This is where the live workflow loops back to the beginning.\n'
             '\n'
-            'from sportsquant.models.ratings.massey_ratings import MasseyRatings\n'
-            'from sportsquant.models.ratings.pagerank_ratings import PageRankRatings\n'
+            'from quantitative_sports.models.ratings.massey_ratings import MasseyRatings\n'
+            'from quantitative_sports.models.ratings.pagerank_ratings import PageRankRatings\n'
             '\n'
             '# Simulate new game results arriving\n'
             'new_games = pd.DataFrame([\n'
@@ -1067,14 +1067,14 @@ def build() -> nbf.NotebookNode:
             "\n"
             "| Class/Function | Module | Purpose |\n"
             "|---|---|---|\n"
-            "| `Odds` | `sportsquant.core.betting.odds` | Odds conversion |\n"
-            "| `KellyCalculator` | `sportsquant.core.betting.kelly` | Kelly Criterion sizing |\n"
-            "| `EdgeCalculator` | `sportsquant.core.betting.kelly` | Edge detection |\n"
-            "| `BankrollManager` | `sportsquant.core.betting.kelly` | Bankroll tracking |\n"
-            "| `american_to_decimal` | `sportsquant.core.betting.engine` | Odds conversion |\n"
-            "| `calculate_ev` | `sportsquant.core.betting.engine` | EV calculation |\n"
-            "| `MasseyRatings` | `sportsquant.models.ratings.massey_ratings` | Massey method |\n"
-            "| `PageRankRatings` | `sportsquant.models.ratings.pagerank_ratings` | PageRank method |\n"
+            "| `Odds` | `quantitative_sports.core.betting.odds` | Odds conversion |\n"
+            "| `KellyCalculator` | `quantitative_sports.core.betting.kelly` | Kelly Criterion sizing |\n"
+            "| `EdgeCalculator` | `quantitative_sports.core.betting.kelly` | Edge detection |\n"
+            "| `BankrollManager` | `quantitative_sports.core.betting.kelly` | Bankroll tracking |\n"
+            "| `american_to_decimal` | `quantitative_sports.core.betting.engine` | Odds conversion |\n"
+            "| `calculate_ev` | `quantitative_sports.core.betting.engine` | EV calculation |\n"
+            "| `MasseyRatings` | `quantitative_sports.models.ratings.massey_ratings` | Massey method |\n"
+            "| `PageRankRatings` | `quantitative_sports.models.ratings.pagerank_ratings` | PageRank method |\n"
             "\n"
             "### The Live Workflow Pipeline\n"
             "\n"
@@ -1086,7 +1086,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "### Next Steps\n"
             "\n"
-            "This concludes the SportsQuant lab series. To go further:\n"
+            "This concludes the Quant-Sports lab series. To go further:\n"
             "\n"
             "- **Productionize**: Deploy the poller with Docker Compose\n"
             "- **Automate**: Create Prefect flows for the full workflow\n"

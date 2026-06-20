@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from sportsquant.data.nfl import NFLDataConfig, NFLDataPipeline
+from quantitative_sports.data.nfl import NFLDataConfig, NFLDataPipeline
 
 
 def test_detect_middles_delegates_to_strategy() -> None:
@@ -72,7 +72,7 @@ def test_get_multi_book_odds_parses_response(monkeypatch) -> None:
         captured["params"] = params
         return FakeResp(payload)
 
-    # Patch the httpx module attribute used inside sportsquant.data.nfl
+    # Patch the httpx module attribute used inside quantitative_sports.data.nfl
     monkeypatch.setattr("httpx.get", fake_get)
 
     pipeline = NFLDataPipeline(config=NFLDataConfig())

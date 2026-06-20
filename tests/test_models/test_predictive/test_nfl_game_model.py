@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from sportsquant.models.predictive.nfl_game_model import (
+from quantitative_sports.models.predictive.nfl_game_model import (
     NFLGameFeatures,
     NFLGamePrediction,
     NFLGamePredictor,

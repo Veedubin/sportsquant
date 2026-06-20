@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from sportsquant.util.time_utils import (
+from quantitative_sports.util.time_utils import (
     american_to_implied_prob,
     safe_float,
     utc_now_iso,

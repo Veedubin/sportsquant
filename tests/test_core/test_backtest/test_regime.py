@@ -3,7 +3,7 @@
 import pandas as pd
 import numpy as np
 
-from sportsquant.core.backtest.regime import (
+from quantitative_sports.core.backtest.regime import (
     RegimeDetector,
     WalkForwardValidator,
     RegimeConfig,

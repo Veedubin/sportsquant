@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sportsquant.core.betting.metrics import empty_performance_metrics
+from quantitative_sports.core.betting.metrics import empty_performance_metrics
 
 
 def test_empty_performance_metrics_returns_zero_metrics() -> None:

@@ -68,14 +68,14 @@ using team-level rolling aggregates from `nflfastR` and an XGBoost ensemble.
 # Cell 1 — imports
 cells.append(
     code(
-        """from sportsquant.models.predictive.nfl_game_model import (
+        """from quantitative_sports.models.predictive.nfl_game_model import (
     NFLGameFeatures,
     NFLGamePredictor,
     feature_columns,
     train_default_model,
 )
-from sportsquant.data.nfl import NFLDataConfig, NFLDataPipeline
-from sportsquant.models.predictive.nfl_game_model import build_features_from_pipeline
+from quantitative_sports.data.nfl import NFLDataConfig, NFLDataPipeline
+from quantitative_sports.models.predictive.nfl_game_model import build_features_from_pipeline
 
 print('NFL XGBoost predictor ready')
 print('Feature columns:', feature_columns())"""

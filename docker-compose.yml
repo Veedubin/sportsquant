@@ -1,4 +1,4 @@
-name: sportsquant
+name: quantitative_sports
 
 x-logging: &default-logging
   options:
@@ -8,13 +8,13 @@ x-logging: &default-logging
 services:
   timescaledb:
     image: docker.io/timescale/timescaledb:latest-pg18
-    container_name: sportsquant-timescaledb
+    container_name: quant-sports-timescaledb
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${SPORTSQUANT_DB_USER:-sportsquant}
-      POSTGRES_PASSWORD: ${SPORTSQUANT_DB_PASSWORD:-sportsquant}
-      POSTGRES_DB: ${SPORTSQUANT_DB_NAME:-sportsquant}
+      POSTGRES_USER: ${QUANT_SPORTS_DB_USER:-quantitative_sports}
+      POSTGRES_PASSWORD: ${QUANT_SPORTS_DB_PASSWORD:-quantitative_sports}
+      POSTGRES_DB: ${QUANT_SPORTS_DB_NAME:-quantitative_sports}
     volumes:
       - timescaledb_data:/var/lib/postgresql
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -32,23 +32,23 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.poller
-    image: sportsquant/poller:latest
-    container_name: sportsquant-poller
+    image: quant-sports/poller:latest
+    container_name: quant-sports-poller
     environment:
       PYTHONUNBUFFERED: "1"
-      SPORTSQUANT_DB_HOST: timescaledb
-      SPORTSQUANT_DB_PORT: "5432"
-      SPORTSQUANT_DB_USER: ${SPORTSQUANT_DB_USER:-sportsquant}
-      SPORTSQUANT_DB_PASSWORD: ${SPORTSQUANT_DB_PASSWORD:-sportsquant}
-      SPORTSQUANT_DB_NAME: ${SPORTSQUANT_DB_NAME:-sportsquant}
-      SPORTSQUANT_POLLER_SCHEDULER: ${SPORTSQUANT_POLLER_SCHEDULER:-cron}
-      SPORTSQUANT_POLLER_ACTIVE_SPORTS: ${SPORTSQUANT_POLLER_ACTIVE_SPORTS:-nfl,nba}
-      SPORTSQUANT_POLLER_LOG_LEVEL: ${SPORTSQUANT_POLLER_LOG_LEVEL:-INFO}
-      SPORTSQUANT_POLLER_ODDS_API_KEY: ${SPORTSQUANT_POLLER_ODDS_API_KEY:-}
-      SPORTSQUANT_POLLER_ODDS_API_INTERVAL_SECONDS: ${SPORTSQUANT_POLLER_ODDS_API_INTERVAL_SECONDS:-86400}
-      SPORTSQUANT_POLLER_ESPN_INJURIES_INTERVAL_SECONDS: ${SPORTSQUANT_POLLER_ESPN_INJURIES_INTERVAL_SECONDS:-900}
-      SPORTSQUANT_POLLER_MAX_RETRIES: ${SPORTSQUANT_POLLER_MAX_RETRIES:-3}
-      SPORTSQUANT_POLLER_RETRY_DELAY: ${SPORTSQUANT_POLLER_RETRY_DELAY:-30}
+      QUANT_SPORTS_DB_HOST: timescaledb
+      QUANT_SPORTS_DB_PORT: "5432"
+      QUANT_SPORTS_DB_USER: ${QUANT_SPORTS_DB_USER:-quantitative_sports}
+      QUANT_SPORTS_DB_PASSWORD: ${QUANT_SPORTS_DB_PASSWORD:-quantitative_sports}
+      QUANT_SPORTS_DB_NAME: ${QUANT_SPORTS_DB_NAME:-quantitative_sports}
+      QUANT_SPORTS_POLLER_SCHEDULER: ${QUANT_SPORTS_POLLER_SCHEDULER:-cron}
+      QUANT_SPORTS_POLLER_ACTIVE_SPORTS: ${QUANT_SPORTS_POLLER_ACTIVE_SPORTS:-nfl,nba}
+      QUANT_SPORTS_POLLER_LOG_LEVEL: ${QUANT_SPORTS_POLLER_LOG_LEVEL:-INFO}
+      QUANT_SPORTS_POLLER_ODDS_API_KEY: ${QUANT_SPORTS_POLLER_ODDS_API_KEY:-}
+      QUANT_SPORTS_POLLER_ODDS_API_INTERVAL_SECONDS: ${QUANT_SPORTS_POLLER_ODDS_API_INTERVAL_SECONDS:-86400}
+      QUANT_SPORTS_POLLER_ESPN_INJURIES_INTERVAL_SECONDS: ${QUANT_SPORTS_POLLER_ESPN_INJURIES_INTERVAL_SECONDS:-900}
+      QUANT_SPORTS_POLLER_MAX_RETRIES: ${QUANT_SPORTS_POLLER_MAX_RETRIES:-3}
+      QUANT_SPORTS_POLLER_RETRY_DELAY: ${QUANT_SPORTS_POLLER_RETRY_DELAY:-30}
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -60,17 +60,17 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
-    image: sportsquant/web:latest
-    container_name: sportsquant-web
+    image: quant-sports/web:latest
+    container_name: quant-sports-web
     ports:
       - "8080:8080"
     environment:
       PYTHONUNBUFFERED: "1"
-      SPORTSQUANT_DB_HOST: timescaledb
-      SPORTSQUANT_DB_PORT: "5432"
-      SPORTSQUANT_DB_USER: ${SPORTSQUANT_DB_USER:-sportsquant}
-      SPORTSQUANT_DB_PASSWORD: ${SPORTSQUANT_DB_PASSWORD:-sportsquant}
-      SPORTSQUANT_DB_NAME: ${SPORTSQUANT_DB_NAME:-sportsquant}
+      QUANT_SPORTS_DB_HOST: timescaledb
+      QUANT_SPORTS_DB_PORT: "5432"
+      QUANT_SPORTS_DB_USER: ${QUANT_SPORTS_DB_USER:-quantitative_sports}
+      QUANT_SPORTS_DB_PASSWORD: ${QUANT_SPORTS_DB_PASSWORD:-quantitative_sports}
+      QUANT_SPORTS_DB_NAME: ${QUANT_SPORTS_DB_NAME:-quantitative_sports}
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -89,4 +89,4 @@ volumes:
 
 networks:
   default:
-    name: sportsquant-net
+    name: quantitative_sports-net

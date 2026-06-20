@@ -1,13 +1,13 @@
 # NFL / Football Modules
 
 This document covers the NFL-specific surface area added on top of the
-generic betting engine. It mirrors the layout in `src/sportsquant/data/nfl.py`,
-`src/sportsquant/models/predictive/nfl_game_model.py`, and the multi-book
+generic betting engine. It mirrors the layout in `src/quantitative_sports/data/nfl.py`,
+`src/quantitative_sports/models/predictive/nfl_game_model.py`, and the multi-book
 odds parser.
 
 ## Data layer
 
-### `NFLDataPipeline` (`src/sportsquant/data/nfl.py`)
+### `NFLDataPipeline` (`src/quantitative_sports/data/nfl.py`)
 
 The single canonical entry point for NFL data. Composes:
 
@@ -26,7 +26,7 @@ Methods:
 - **`get_multi_book_odds(api_key)`** — fetches The Odds API across all books
 - **`detect_middles(df)`** — wraps the middling detection strategy
 
-### `parse_game_lines_to_raw(events)` (`src/sportsquant/data/sources/odds_api/game_lines.py`)
+### `parse_game_lines_to_raw(events)` (`src/quantitative_sports/data/sources/odds_api/game_lines.py`)
 
 Flattens The Odds API event responses into a per-(game, bookmaker) DataFrame.
 Handles three market types:
@@ -50,7 +50,7 @@ championship / division winner markets.
 
 ## Modeling layer
 
-### `NFLGamePredictor` (`src/sportsquant/models/predictive/nfl_game_model.py`)
+### `NFLGamePredictor` (`src/quantitative_sports/models/predictive/nfl_game_model.py`)
 
 XGBoost ensemble with three sub-models:
 
@@ -82,7 +82,7 @@ in production scoring jobs.
 Dataclass that maps cleanly to the 14-feature schema. Build via:
 
 ```python
-from sportsquant.models.predictive.nfl_game_model import build_features_from_pipeline
+from quantitative_sports.models.predictive.nfl_game_model import build_features_from_pipeline
 
 features = build_features_from_pipeline(
     pipeline, home_team="KC", away_team="BAL", season=2024, week=10,
@@ -95,7 +95,7 @@ cache is unavailable so downstream code never crashes.
 
 ## Strategy layer
 
-### `middling.detect_middles` (`src/sportsquant/core/betting/strategies/middling.py`)
+### `middling.detect_middles` (`src/quantitative_sports/core/betting/strategies/middling.py`)
 
 A "middle" exists when two books offer materially different lines on the
 same game, allowing a bet on each side that can both win.
@@ -111,12 +111,12 @@ Threshold: `min_middle_points` (default 1.0).
 ## CLI
 
 ```bash
-sportsquant nfl ev           --player "Patrick Mahomes" --stat passing_yards --line 280.5 --odds -110
-sportsquant nfl kelly        --edge 0.05 --odds -110 --bankroll 1000
-sportsquant nfl backtest     --csv lines.csv --walk-forward
-sportsquant nfl ratings      --season 2024 --method massey
-sportsquant nfl props        --site prizepicks --min-ev 0.05
-sportsquant nfl predict-game --home KC --away BAL --season 2024 --week 10
+quantitative_sports nfl ev           --player "Patrick Mahomes" --stat passing_yards --line 280.5 --odds -110
+quantitative_sports nfl kelly        --edge 0.05 --odds -110 --bankroll 1000
+quantitative_sports nfl backtest     --csv lines.csv --walk-forward
+quantitative_sports nfl ratings      --season 2024 --method massey
+quantitative_sports nfl props        --site prizepicks --min-ev 0.05
+quantitative_sports nfl predict-game --home KC --away BAL --season 2024 --week 10
 ```
 
 ## Notebooks
@@ -141,7 +141,7 @@ A new `NFL Game Predictor` page is available at `/nfl-predict` with:
 - Live prediction: home/away win prob, projected spread, projected total
 - Top 8 feature importances with horizontal bar chart
 
-`uvicorn sportsquant.web.app:app --port 8080` then visit
+`uvicorn quantitative_sports.web.app:app --port 8080` then visit
 `http://localhost:8080/nfl-predict`.
 
 ## Tests

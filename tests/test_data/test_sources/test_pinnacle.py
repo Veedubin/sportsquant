@@ -1,6 +1,6 @@
 """Tests for Pinnacle scraper (new).
 
-Note: sportsquant.data.sources.pinnacle is not yet implemented.
+Note: quantitative_sports.data.sources.pinnacle is not yet implemented.
 Using inline implementations for testing.
 """
 

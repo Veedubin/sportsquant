@@ -1,7 +1,7 @@
 # Docker
 
 ## Overview
-sportsquant v0.2.0 ships as a 3-service docker compose stack:
+quantitative_sports v0.2.0 ships as a 3-service docker compose stack:
 - `timescaledb` — PostgreSQL 18 with TimescaleDB 2.28 (pulled from upstream)
 - `poller` — built from `docker/Dockerfile.poller`, fetches odds + injuries
 - `web` — built from `docker/Dockerfile.web`, serves ops dashboard
@@ -65,9 +65,9 @@ cp .env.example .env
 ```
 
 Key variables:
-- `SPORTSQUANT_DB_*` — DB connection
-- `SPORTSQUANT_POLLER_*` — poller behavior (scheduler, sports, intervals)
-- `SPORTSQUANT_POLLER_ODDS_API_KEY` — your Odds API key (optional, ESPN works without)
+- `QUANT_SPORTS_DB_*` — DB connection
+- `QUANT_SPORTS_POLLER_*` — poller behavior (scheduler, sports, intervals)
+- `QUANT_SPORTS_POLLER_ODDS_API_KEY` — your Odds API key (optional, ESPN works without)
 
 ## Architecture details
 
@@ -92,7 +92,7 @@ The poller is **independent** from the web UI — you can run one without the ot
 - **TimescaleDB won't start**: PG 18 requires the mount path to be `/var/lib/postgresql` (not `/var/lib/postgresql/data`). This is fixed in `docker-compose.yml`.
 - **TimescaleDB compression errors**: TimescaleDB 2.28 uses the new `columnstore` API. The init script uses `CALL add_columnstore_policy(...)` (not `SELECT add_compression_policy(...)`).
 - **Web UI shows "no data"**: Start the poller with `make poller-once` to run one cycle, or wait for the cron interval (default 15 min for ESPN).
-- **Poller logs say "API key missing"**: Set `SPORTSQUANT_POLLER_ODDS_API_KEY` in your `.env` file. ESPN works without a key.
+- **Poller logs say "API key missing"**: Set `QUANT_SPORTS_POLLER_ODDS_API_KEY` in your `.env` file. ESPN works without a key.
 - **Image build is slow**: The poller image includes Prefect (~1 GB). The web image is ~1 GB. Build once, reuse the layers.
 
 ## Healthchecks

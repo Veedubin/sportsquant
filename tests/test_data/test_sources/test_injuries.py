@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 from datetime import date
 
-from sportsquant.data.sources.espn_injuries.scraper import (
+from quantitative_sports.data.sources.espn_injuries.scraper import (
     ESPNInjuryScraper,
     InjuryReport,
     InjuryStatus,
@@ -90,7 +90,7 @@ class TestESPNInjuryScraper:
         scraper = ESPNInjuryScraper(base_url="https://www.espn.com/nfl/injuries")
         assert scraper.base_url == "https://www.espn.com/nfl/injuries"
 
-    @patch("sportsquant.data.sources.espn_injuries.scraper.httpx.Client")
+    @patch("quantitative_sports.data.sources.espn_injuries.scraper.httpx.Client")
     def test_get_injuries(self, mock_httpx):
         """Test getting injuries from ESPN."""
         mock_response = MagicMock()
@@ -104,7 +104,7 @@ class TestESPNInjuryScraper:
         # Should return a list (may be empty if parsing fails on mock HTML)
         assert isinstance(injuries, list)
 
-    @patch("sportsquant.data.sources.espn_injuries.scraper.httpx.Client")
+    @patch("quantitative_sports.data.sources.espn_injuries.scraper.httpx.Client")
     def test_get_injuries_error(self, mock_httpx):
         """Test error handling when fetching injuries."""
         mock_httpx.return_value.__enter__.return_value.get.side_effect = Exception("Network Error")

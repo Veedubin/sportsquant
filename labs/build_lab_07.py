@@ -5,7 +5,7 @@ produce the notebook, then open it in Jupyter to execute the cells.
 
 Usage::
 
-    cd /home/jcharles/Projects/Infrastructure/sportsquant
+    cd /home/jcharles/Projects/Infrastructure/quantitative_sports
     uv run python labs/build_lab_07.py
 """
 
@@ -61,7 +61,7 @@ def build() -> nbf.NotebookNode:
         nbf.v4.new_markdown_cell(
             "## Prerequisites\n"
             "\n"
-            "- **Labs 01-06 completed** — you understand the SportsQuant data pipeline\n"
+            "- **Labs 01-06 completed** — you understand the Quant-Sports data pipeline\n"
             "- **Linear algebra basics** — matrix inversion, solving Ax = b\n"
             "- **Probability basics** — Bayes' theorem, normal distributions\n"
             "\n"
@@ -83,7 +83,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "## Section 1: Setup — Imports and Synthetic Data\n"
             "\n"
-            "We import the SportsQuant rating modules and set up synthetic game data for "
+            "We import the Quant-Sports rating modules and set up synthetic game data for "
             "when the database doesn't have enough results yet. All four rating systems will "
             "operate on the same game dataset so we can compare fairly."
         )
@@ -101,8 +101,8 @@ def build() -> nbf.NotebookNode:
             "import pandas as pd\n"
             "import matplotlib.pyplot as plt\n"
             "\n"
-            "from sportsquant.models.ratings.massey_ratings import MasseyRatings, MasseyRatingsConfig\n"
-            "from sportsquant.models.ratings.pagerank_ratings import PageRankRatings\n"
+            "from quantitative_sports.models.ratings.massey_ratings import MasseyRatings, MasseyRatingsConfig\n"
+            "from quantitative_sports.models.ratings.pagerank_ratings import PageRankRatings\n"
             "\n"
             "# Enable nested event loops in Jupyter\n"
             "import nest_asyncio\n"
@@ -432,7 +432,7 @@ def build() -> nbf.NotebookNode:
             "- `p[i]` = average point margin for team i\n"
             "- `r[i]` = the rating to solve for\n"
             "\n"
-            "SportsQuant's `MasseyRatings` class handles matrix construction, solving, "
+            "Quant-Sports's `MasseyRatings` class handles matrix construction, solving, "
             "and decomposition."
         )
     )
@@ -440,7 +440,7 @@ def build() -> nbf.NotebookNode:
     # ── Cell 14: Massey ratings computation ──────────────────────────────
     cells.append(
         nbf.v4.new_code_cell(
-            "# Cell 14: Compute Massey ratings using SportsQuant\n"
+            "# Cell 14: Compute Massey ratings using Quant-Sports\n"
             "\n"
             "massey = MasseyRatings(home_advantage=3.0)\n"
             "\n"
@@ -503,7 +503,7 @@ def build() -> nbf.NotebookNode:
             "2. Apply power iteration with a damping factor (typically 0.85)\n"
             "3. A team's rating = the steady-state probability of reaching it via wins\n"
             "\n"
-            "SportsQuant's `PageRankRatings` class implements this with margin-weighted "
+            "Quant-Sports's `PageRankRatings` class implements this with margin-weighted "
             "transitions."
         )
     )
@@ -1065,9 +1065,9 @@ def build() -> nbf.NotebookNode:
             "\n"
             "| Class | Module | Purpose |\n"
             "|---|---|---|\n"
-            "| `MasseyRatings` | `sportsquant.models.ratings.massey_ratings` | Massey method |\n"
-            "| `MasseyRatingsConfig` | `sportsquant.models.ratings.massey_ratings` | Configuration |\n"
-            "| `PageRankRatings` | `sportsquant.models.ratings.pagerank_ratings` | PageRank method |\n"
+            "| `MasseyRatings` | `quantitative_sports.models.ratings.massey_ratings` | Massey method |\n"
+            "| `MasseyRatingsConfig` | `quantitative_sports.models.ratings.massey_ratings` | Configuration |\n"
+            "| `PageRankRatings` | `quantitative_sports.models.ratings.pagerank_ratings` | PageRank method |\n"
             "\n"
             "### Key Concepts\n"
             "\n"
@@ -1087,7 +1087,7 @@ def build() -> nbf.NotebookNode:
             "---\n"
             "\n"
             "*This lab used `MasseyRatings` and `PageRankRatings` from "
-            "`sportsquant.models.ratings`. Elo and Glicko were implemented inline as "
+            "`quantitative_sports.models.ratings`. Elo and Glicko were implemented inline as "
             "reference implementations for educational purposes.*"
         )
     )

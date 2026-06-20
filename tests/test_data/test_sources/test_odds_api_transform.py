@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from sportsquant.data.sources.odds_api.schema import PLAYER_PROP_REQUIRED_COLUMNS
-from sportsquant.data.sources.odds_api.transform import transform_props_response
-from sportsquant.data.sources.odds_api.types import PlayerInfo
+from quantitative_sports.data.sources.odds_api.schema import PLAYER_PROP_REQUIRED_COLUMNS
+from quantitative_sports.data.sources.odds_api.transform import transform_props_response
+from quantitative_sports.data.sources.odds_api.types import PlayerInfo
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "odds_api_response.json"

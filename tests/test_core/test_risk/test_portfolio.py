@@ -4,7 +4,7 @@
 import pytest
 from pytest import approx
 
-from sportsquant.core.risk.portfolio import (
+from quantitative_sports.core.risk.portfolio import (
     KellyBettor,
     KellyConfig,
     PortfolioManager,

@@ -1,6 +1,6 @@
-# SportsQuant Labs
+# Quant-Sports Labs
 
-Ten comprehensive Jupyter notebook walkthroughs that teach you the entire sportsquant system end-to-end.
+Ten comprehensive Jupyter notebook walkthroughs that teach you the entire quantitative_sports system end-to-end.
 
 ## Catalog
 
@@ -20,7 +20,7 @@ Ten comprehensive Jupyter notebook walkthroughs that teach you the entire sports
 ## Running the labs
 
 ```bash
-uv add sportsquant[notebook]
+uv add quantitative_sports[notebook]
 uv run jupyter lab labs/
 ```
 

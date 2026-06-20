@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sportsquant.data.sources.curated.io import (
+from quantitative_sports.data.sources.curated.io import (
     CuratedPaths,
     resolve_paths_from_config,
     resolve_snapshot_id,

@@ -6,7 +6,7 @@ live TimescaleDB instance.
 
 Usage::
 
-    cd /home/jcharles/Projects/Infrastructure/sportsquant
+    cd /home/jcharles/Projects/Infrastructure/quantitative_sports
     uv run python labs/build_lab_02.py
 """
 
@@ -41,7 +41,7 @@ def build() -> nbf.NotebookNode:
         nbf.v4.new_markdown_cell(
             "# Lab 02: Data Ingestion — How the Poller Works\n"
             "\n"
-            "In this lab you'll learn how SportsQuant's poller architecture fetches "
+            "In this lab you'll learn how Quant-Sports's poller architecture fetches "
             "data from external APIs and stores it in TimescaleDB. By the end you will:\n"
             "\n"
             "- Understand the poller architecture (sources → writers → DB)\n"
@@ -64,16 +64,16 @@ def build() -> nbf.NotebookNode:
             "- **Lab 01 completed** — you know how to connect to TimescaleDB\n"
             "- A running **TimescaleDB** instance\n"
             "- The **poller has run at least once** (otherwise some tables will be empty)\n"
-            "- For the manual poll trigger: `SPORTSQUANT_POLLER_ODDS_API_KEY` set "
+            "- For the manual poll trigger: `QUANT_SPORTS_POLLER_ODDS_API_KEY` set "
             "if you want live odds data\n"
             "\n"
             "### Environment variables for the poller\n"
             "\n"
             "| Variable | Purpose | Default |\n"
             "|---|---|---|\n"
-            "| `SPORTSQUANT_DB_HOST` | Database host | `timescaledb` |\n"
-            "| `SPORTSQUANT_POLLER_ODDS_API_KEY` | Odds API key | `` (empty = disabled) |\n"
-            "| `SPORTSQUANT_POLLER_ACTIVE_SPORTS` | Comma-separated sports | `nfl,nba` |"
+            "| `QUANT_SPORTS_DB_HOST` | Database host | `timescaledb` |\n"
+            "| `QUANT_SPORTS_POLLER_ODDS_API_KEY` | Odds API key | `` (empty = disabled) |\n"
+            "| `QUANT_SPORTS_POLLER_ACTIVE_SPORTS` | Comma-separated sports | `nfl,nba` |"
         )
     )
 
@@ -84,7 +84,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "## Section 1: Poller Architecture\n"
             "\n"
-            "SportsQuant's data pipeline follows a simple, robust pattern:\n"
+            "Quant-Sports's data pipeline follows a simple, robust pattern:\n"
             "\n"
             "```\n"
             "┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────┐\n"
@@ -116,8 +116,8 @@ def build() -> nbf.NotebookNode:
             "import asyncio\n"
             "import json\n"
             "\n"
-            "from sportsquant.infra.db.connection import DBConfig, DatabasePool, get_pool, health_check, reset_pool\n"
-            "from sportsquant.infra.db.queries import (\n"
+            "from quantitative_sports.infra.db.connection import DBConfig, DatabasePool, get_pool, health_check, reset_pool\n"
+            "from quantitative_sports.infra.db.queries import (\n"
             "    get_poller_health_summary,\n"
             "    get_poller_runs,\n"
             "    get_poller_logs,\n"
@@ -127,11 +127,11 @@ def build() -> nbf.NotebookNode:
             "    get_recent_poll_volume,\n"
             "    refresh_db_metrics,\n"
             ")\n"
-            "from sportsquant.infra.db.schema import verify_schema, EXPECTED_TABLES\n"
-            "from sportsquant.infra.poller.config import PollerConfig, get_active_sports, is_odds_api_enabled, is_espn_enabled\n"
-            "from sportsquant.infra.poller.sources.odds_api import OddsAPIConfig\n"
-            "from sportsquant.infra.poller.sources.espn_injuries import ESPNInjuriesConfig, SPORT_ENDPOINTS\n"
-            "from sportsquant.infra.poller.tasks import run_poll_cycle, TaskResult\n"
+            "from quantitative_sports.infra.db.schema import verify_schema, EXPECTED_TABLES\n"
+            "from quantitative_sports.infra.poller.config import PollerConfig, get_active_sports, is_odds_api_enabled, is_espn_enabled\n"
+            "from quantitative_sports.infra.poller.sources.odds_api import OddsAPIConfig\n"
+            "from quantitative_sports.infra.poller.sources.espn_injuries import ESPNInjuriesConfig, SPORT_ENDPOINTS\n"
+            "from quantitative_sports.infra.poller.tasks import run_poll_cycle, TaskResult\n"
             "\n"
             "import nest_asyncio\n"
             "nest_asyncio.apply()\n"
@@ -399,7 +399,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "TimescaleDB partitions hypertables into **chunks** — smaller, "
             "more manageable slices of data. Each chunk covers a time interval "
-            "(1 day by default in SportsQuant).\n"
+            "(1 day by default in Quant-Sports).\n"
             "\n"
             "Let's inspect how data is partitioned."
         )
@@ -462,7 +462,7 @@ def build() -> nbf.NotebookNode:
             "## Section 8: Compression and Retention Policies\n"
             "\n"
             "TimescaleDB supports automatic compression and retention policies. "
-            "SportsQuant configures:\n"
+            "Quant-Sports configures:\n"
             "\n"
             "- **Compression**: After 7 days, chunks are compressed to save disk space\n"
             "- **Retention**: Data older than 2 years is automatically dropped\n"
@@ -586,7 +586,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "## Section 10: Poller Health and Run History\n"
             "\n"
-            "SportsQuant tracks every poll cycle in `poller_runs` and maintains "
+            "Quant-Sports tracks every poll cycle in `poller_runs` and maintains "
             "a health dashboard in `poller_health`. The read-side query helpers "
             "give you structured access to this data."
         )

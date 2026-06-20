@@ -1,4 +1,4 @@
-# SportsQuant — Quantitative Sports Betting Toolkit
+# Quant-Sports — Quantitative Sports Betting Toolkit
 
 **Mathematical toolkit for sports betting. Bring your own data.**
 
@@ -6,16 +6,16 @@
 ![Tests](https://img.shields.io/badge/tests-775_passing-brightgreen)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-SportsQuant is a professional-grade quantitative analysis toolkit designed for analysts, not tipsters. Think of it as "QuantLib for sports betting"—it provides the rigorous mathematical infrastructure needed to translate raw odds and statistics into actionable, risk-adjusted betting signals.
+Quant-Sports is a professional-grade quantitative analysis toolkit designed for analysts, not tipsters. Think of it as "QuantLib for sports betting"—it provides the rigorous mathematical infrastructure needed to translate raw odds and statistics into actionable, risk-adjusted betting signals.
 
 ## Quick Start
 
 ```bash
 # 1. Install the desktop package
-uv add sportsquant[notebook]
+uv add quantitative_sports[notebook]
 
 # 2. Start the storage layer
-cd ~/Projects/Infrastructure/sportsquant
+cd ~/Projects/Infrastructure/quantitative_sports
 make docker-up
 
 # 3. Open a notebook
@@ -24,7 +24,7 @@ uv run jupyter lab labs/01_getting_started.ipynb
 
 ## Architecture
 
-SportsQuant v0.2.0 is decoupled into three primary layers to ensure scalability and separation of concerns:
+Quant-Sports v0.2.0 is decoupled into three primary layers to ensure scalability and separation of concerns:
 
 ```text
 +-----------------------+       +-------------------------------------------+
@@ -44,8 +44,8 @@ SportsQuant v0.2.0 is decoupled into three primary layers to ensure scalability 
 - **Desktop Package**: The core Python library providing the math, models, and CLI.
 - **Infrastructure Stack**: 
     - `timescaledb`: High-performance time-series storage (PG 18 + TimescaleDB 2.28).
-    - `sportsquant/poller`: Background container for data collection (Odds API, ESPN).
-    - `sportsquant/web`: Operations dashboard for health monitoring and metrics.
+    - `quant-sports/poller`: Background container for data collection (Odds API, ESPN).
+    - `quant-sports/web`: Operations dashboard for health monitoring and metrics.
 - **Data Flow**: The poller fetches live data $\rightarrow$ writes to TimescaleDB $\rightarrow$ consumed by the web dashboard and your analytical notebooks.
 
 ## Features
@@ -68,7 +68,7 @@ SportsQuant v0.2.0 is decoupled into three primary layers to ensure scalability 
 ## Package Layout
 
 ```
-sportsquant/
+quantitative_sports/
 ├── core/           # Betting math (EV, Kelly, middling, metrics)
 ├── models/         # XGBoost, ratings, predictive models
 ├── backtest/       # Backtest engine
@@ -91,13 +91,13 @@ docker-compose.yml  # timescaledb + poller + web
 
 ### Installation
 ```bash
-uv add sportsquant[notebook]
+uv add quantitative_sports[notebook]
 ```
 
 ### Usage
 ```bash
 # Run a CLI command
-sportsquant nfl predict-game
+quantitative_sports nfl predict-game
 
 # Start the docker stack (DB, Poller, Web)
 make docker-up
@@ -116,4 +116,4 @@ cp .env.example .env
 
 ## Disclaimer
 
-*SportsQuant is a mathematical toolkit provided for analytical purposes only. It does not provide betting advice or guaranteed returns. You are solely responsible for compliance with your local laws and regulations regarding sports wagering.*
+*Quant-Sports is a mathematical toolkit provided for analytical purposes only. It does not provide betting advice or guaranteed returns. You are solely responsible for compliance with your local laws and regulations regarding sports wagering.*

@@ -6,14 +6,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from sportsquant.features_advanced.raptor_box import (
+from quantitative_sports.features_advanced.raptor_box import (
     RaptorBoxConfig,
     RaptorBoxFeatures,
     _safe_divide,
     _rolling_mean_lagged,
 )
-from sportsquant.features_advanced.raptor_composite import RaptorCompositeFeatures
-from sportsquant.features_advanced.massey_ratings import MasseyRatings
+from quantitative_sports.features_advanced.raptor_composite import RaptorCompositeFeatures
+from quantitative_sports.features_advanced.massey_ratings import MasseyRatings
 
 
 class TestSafeDivide:

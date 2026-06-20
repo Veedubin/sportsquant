@@ -66,12 +66,12 @@ cells.append(md("""## 1. Imports"""))
 
 cells.append(
     code(
-        """from sportsquant.data.nfl import NFLDataConfig, NFLDataPipeline
-from sportsquant.data.sources.odds_api.game_lines import (
+        """from quantitative_sports.data.nfl import NFLDataConfig, NFLDataPipeline
+from quantitative_sports.data.sources.odds_api.game_lines import (
     parse_game_lines_to_raw,
     parse_outrights_to_futures,
 )
-from sportsquant.core.betting.strategies.middling import (
+from quantitative_sports.core.betting.strategies.middling import (
     detect_middles,
     detect_spread_middles,
     detect_total_middles,

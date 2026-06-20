@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from sportsquant.models.analysis.rules.mlb import (
+from quantitative_sports.models.analysis.rules.mlb import (
     MLB_HITTER_STATS,
     MLB_PITCHER_STATS,
     MLB_COMBO_STATS,
@@ -28,7 +28,7 @@ from sportsquant.models.analysis.rules.mlb import (
     is_pitcher_stat,
     is_batter_stat,
 )
-from sportsquant.models.analysis.mlb_eval import (
+from quantitative_sports.models.analysis.mlb_eval import (
     compute_mlb_stat_from_gamelog_row,
     MLBDataProvider,
     MLBStatisticalModel,

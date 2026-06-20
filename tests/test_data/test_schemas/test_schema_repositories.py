@@ -1,6 +1,6 @@
 """Tests for SQLite repositories (migrated from sports-bet).
 
-Note: sportsquant.data.schemas.db uses CrossReferenceDB, not the
+Note: quantitative_sports.data.schemas.db uses CrossReferenceDB, not the
 individual SQLite*Repository classes. Using inline implementations.
 """
 

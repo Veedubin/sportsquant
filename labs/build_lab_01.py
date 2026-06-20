@@ -1,4 +1,4 @@
-"""Build script for Lab 01: Getting Started with SportsQuant.
+"""Build script for Lab 01: Getting Started with Quant-Sports.
 
 Generates ``01_getting_started.ipynb`` using nbformat. Run this script to
 produce the notebook, then open it in Jupyter to execute the cells against a
@@ -6,7 +6,7 @@ live TimescaleDB instance.
 
 Usage::
 
-    cd /home/jcharles/Projects/Infrastructure/sportsquant
+    cd /home/jcharles/Projects/Infrastructure/quantitative_sports
     uv run python labs/build_lab_01.py
 """
 
@@ -39,12 +39,12 @@ def build() -> nbf.NotebookNode:
     # ── Cell 1: Title ──────────────────────────────────────────────────
     cells.append(
         nbf.v4.new_markdown_cell(
-            "# Lab 01: Getting Started with SportsQuant\n"
+            "# Lab 01: Getting Started with Quant-Sports\n"
             "\n"
-            "Welcome! This lab walks you through installing SportsQuant, connecting to "
+            "Welcome! This lab walks you through installing Quant-Sports, connecting to "
             "TimescaleDB, and running your first queries. By the end you will:\n"
             "\n"
-            "- Install the `sportsquant` package with notebook extras\n"
+            "- Install the `quantitative_sports` package with notebook extras\n"
             "- Connect to a running TimescaleDB instance\n"
             "- Verify the database is healthy\n"
             "- Explore the schema (tables, hypertables, materialized views)\n"
@@ -68,29 +68,29 @@ def build() -> nbf.NotebookNode:
             "\n"
             "| Variable | Default |\n"
             "|---|---|\n"
-            "| `SPORTSQUANT_DB_HOST` | `timescaledb` |\n"
-            "| `SPORTSQUANT_DB_PORT` | `5432` |\n"
-            "| `SPORTSQUANT_DB_USER` | `sportsquant` |\n"
-            "| `SPORTSQUANT_DB_PASSWORD` | `sportsquant` |\n"
-            "| `SPORTSQUANT_DB_DATABASE` | `sportsquant` |\n"
+            "| `QUANT_SPORTS_DB_HOST` | `timescaledb` |\n"
+            "| `QUANT_SPORTS_DB_PORT` | `5432` |\n"
+            "| `QUANT_SPORTS_DB_USER` | `quantitative_sports` |\n"
+            "| `QUANT_SPORTS_DB_PASSWORD` | `quantitative_sports` |\n"
+            "| `QUANT_SPORTS_DB_DATABASE` | `quantitative_sports` |\n"
             "\n"
-            "If you are running outside Docker, set `SPORTSQUANT_DB_HOST=localhost`."
+            "If you are running outside Docker, set `QUANT_SPORTS_DB_HOST=localhost`."
         )
     )
 
     # ── Cell 3: Install ────────────────────────────────────────────────
     cells.append(
         nbf.v4.new_code_cell(
-            "# Cell 3: Install sportsquant with notebook extras\n"
+            "# Cell 3: Install quantitative_sports with notebook extras\n"
             "# Run this cell once. In a notebook environment you can use:\n"
-            "#   %pip install sportsquant[notebook]\n"
+            "#   %pip install quantitative_sports[notebook]\n"
             "#\n"
             "# If using uv:\n"
-            "#   !uv add sportsquant[notebook]\n"
+            "#   !uv add quantitative_sports[notebook]\n"
             "#\n"
-            "# For now we assume sportsquant is already installed in the environment.\n"
-            "import sportsquant\n"
-            'print(f"sportsquant version: {sportsquant.__version__}")'
+            "# For now we assume quantitative_sports is already installed in the environment.\n"
+            "import quantitative_sports\n"
+            'print(f"quantitative_sports version: {quantitative_sports.__version__}")'
         )
     )
 
@@ -101,7 +101,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "## Section 1: Setup — Import and Configure\n"
             "\n"
-            "SportsQuant uses an async connection pool backed by **asyncpg**. "
+            "Quant-Sports uses an async connection pool backed by **asyncpg**. "
             "All database operations are `async def`, so we run them inside "
             "an event loop (Jupyter handles this for us via `nest_asyncio`)."
         )
@@ -114,16 +114,16 @@ def build() -> nbf.NotebookNode:
             "import asyncio\n"
             "import json\n"
             "\n"
-            "from sportsquant.infra.db.connection import DBConfig, DatabasePool, get_pool, health_check, reset_pool\n"
-            "from sportsquant.infra.db.queries import (\n"
+            "from quantitative_sports.infra.db.connection import DBConfig, DatabasePool, get_pool, health_check, reset_pool\n"
+            "from quantitative_sports.infra.db.queries import (\n"
             "    get_poller_health_summary,\n"
             "    get_poller_runs,\n"
             "    get_poller_logs,\n"
             "    get_table_stats,\n"
             "    get_db_size,\n"
             ")\n"
-            "from sportsquant.infra.db.schema import verify_schema, create_schema, EXPECTED_TABLES, EXPECTED_HYPERTABLES\n"
-            "from sportsquant.infra.db.writers import write_odds_ticks\n"
+            "from quantitative_sports.infra.db.schema import verify_schema, create_schema, EXPECTED_TABLES, EXPECTED_HYPERTABLES\n"
+            "from quantitative_sports.infra.db.writers import write_odds_ticks\n"
             "\n"
             "# Enable nested event loops in Jupyter\n"
             "import nest_asyncio\n"
@@ -138,11 +138,11 @@ def build() -> nbf.NotebookNode:
         nbf.v4.new_code_cell(
             "# Cell 6: Create a DBConfig from environment variables\n"
             "#\n"
-            "# DBConfig reads from env vars with the SPORTSQUANT_DB_ prefix.\n"
-            "# Defaults: host=timescaledb, port=5432, user=sportsquant, etc.\n"
+            "# DBConfig reads from env vars with the QUANT_SPORTS_DB_ prefix.\n"
+            "# Defaults: host=timescaledb, port=5432, user=quantitative_sports, etc.\n"
             "#\n"
             "# To override, set env vars before starting the kernel:\n"
-            "#   export SPORTSQUANT_DB_HOST=localhost\n"
+            "#   export QUANT_SPORTS_DB_HOST=localhost\n"
             "\n"
             "config = DBConfig.from_env()\n"
             'print(f"DBConfig: host={config.host}, port={config.port}, database={config.database}")\n'
@@ -196,7 +196,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "## Section 3: Explore the Schema\n"
             "\n"
-            "SportsQuant uses TimescaleDB hypertables for time-series data "
+            "Quant-Sports uses TimescaleDB hypertables for time-series data "
             "(odds ticks and injuries), regular PostgreSQL tables for metadata, "
             "and a materialized view for metrics."
         )
@@ -318,7 +318,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "## Section 6: Read-Side Query Helpers\n"
             "\n"
-            "SportsQuant ships with convenience query functions that wrap common "
+            "Quant-Sports ships with convenience query functions that wrap common "
             "dashboard queries. Let's try each one."
         )
     )
@@ -347,7 +347,7 @@ def build() -> nbf.NotebookNode:
             "# row counts, 24h deltas, and timestamp bounds.\n"
             "# If the view is stale, refresh it first:\n"
             "\n"
-            "from sportsquant.infra.db.queries import refresh_db_metrics\n"
+            "from quantitative_sports.infra.db.queries import refresh_db_metrics\n"
             "await refresh_db_metrics(pool)\n"
             "\n"
             "stats = await get_table_stats(pool)\n"
@@ -390,7 +390,7 @@ def build() -> nbf.NotebookNode:
     cells.append(
         nbf.v4.new_code_cell(
             "# Cell 24: Insert a synthetic odds tick\n"
-            "from sportsquant.util.time_utils import utc_now_iso\n"
+            "from quantitative_sports.util.time_utils import utc_now_iso\n"
             "\n"
             "test_tick = {\n"
             '    "sport": "nfl",\n'
@@ -483,7 +483,7 @@ def build() -> nbf.NotebookNode:
             "\n"
             "- How to configure and connect to TimescaleDB using `DBConfig` and `get_pool`\n"
             "- How to verify database health with `health_check`\n"
-            "- The SportsQuant schema: 7 tables, 2 hypertables, 1 materialized view\n"
+            "- The Quant-Sports schema: 7 tables, 2 hypertables, 1 materialized view\n"
             "- How to use read-side helpers: `get_poller_health_summary`, `get_table_stats`, `get_db_size`\n"
             "- How to write and delete data with `write_odds_ticks`\n"
             "- How to introspect the schema with `information_schema` queries\n"

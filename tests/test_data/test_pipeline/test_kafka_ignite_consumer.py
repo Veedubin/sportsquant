@@ -3,7 +3,7 @@
 
 from unittest.mock import MagicMock
 
-from sportsquant.data.pipeline.kafka_ignite_consumer import (
+from quantitative_sports.data.pipeline.kafka_ignite_consumer import (
     ConsumerConfig,
     CacheManager,
     MessageRouter,
@@ -261,7 +261,7 @@ class TestMain:
 
     def test_main_entry_point(self):
         """Test main function exists."""
-        from sportsquant.data.pipeline import kafka_ignite_consumer
+        from quantitative_sports.data.pipeline import kafka_ignite_consumer
 
         assert hasattr(kafka_ignite_consumer, "main")
         assert callable(kafka_ignite_consumer.main)
