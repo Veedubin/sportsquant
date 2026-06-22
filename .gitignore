@@ -63,3 +63,11 @@ coverage.xml
 
 # Docker
 docker-compose.override.yml
+
+# Internal handoff / agent docs (not for public repos — keep local only)
+AGENTS.md
+TASKS.md
+HANDOFF.md
+CONTEXT.md
+CONTEXT-*.md
+CONTEXT_[^/]+\.md
